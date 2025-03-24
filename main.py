@@ -1,6 +1,6 @@
 import streamlit as st
 from utils.auth import login_form
-from modules import dashboard, face_attendance, camera_feeds, access_control, incident_reports, settings
+from modules import dashboard, face_attendance, exam_supervisor, camera_feeds, access_control, incident_reports, settings
 
 st.set_page_config(
     page_title="AIsee",
@@ -24,7 +24,7 @@ if not st.session_state.logged_in:
 else:
     page = st.sidebar.radio(
         "Navigation",
-        ["Dashboard", "Face Attendance", "Camera Feeds", "Access Control", "Incident Reports", "Settings"]
+        ["Dashboard", "Face Attendance", "Exam Supervisor", "Camera Feeds", "Access Control", "Incident Reports", "Settings"]
     )
 
     if st.sidebar.button("Logout"):
@@ -35,6 +35,8 @@ else:
         dashboard.render()
     elif page == "Face Attendance":
         face_attendance.render()
+    elif page == "Exam Supervisor":
+        exam_supervisor.render()
     elif page == "Camera Feeds":
         camera_feeds.render()
     elif page == "Access Control":
