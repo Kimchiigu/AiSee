@@ -1,0 +1,16 @@
+{
+  "name": "aisee",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "env": "^0.0.2",
+    "firebase": "^11.5.0"
+  }
+}
