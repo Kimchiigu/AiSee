@@ -1,29 +1,31 @@
 import cv2
 
-face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
+face_cascade = cv2.CascadeClassifier('model/absensi/haarcascade_frontalface_default.xml')
 
-cap = cv2.VideoCapture(0)
+def detect_faces_from_camera(timeout=5):
+    cap = cv2.VideoCapture(0)
+    result_face = None
+    start_time = cv2.getTickCount()
 
-if not cap.isOpened():
-    print("Error: Could not open camera.")
-    exit()
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            continue
 
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5)
 
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        for (x, y, w, h) in faces:
+            cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+            result_face = gray[y:y+h, x:x+w]
 
-    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5)
+        cv2.imshow('Face Detection', frame)
 
-    for (x, y, w, h) in faces:
-        cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+        if (cv2.getTickCount() - start_time)/cv2.getTickFrequency() > timeout:
+            break
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
 
-    cv2.imshow('Face Detection - Press Q to Quit', frame)
-
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
-
-cap.release()
-cv2.destroyAllWindows()
+    cap.release()
+    cv2.destroyAllWindows()
+    return result_face
