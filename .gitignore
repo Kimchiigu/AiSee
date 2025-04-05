@@ -2,3 +2,6 @@ node_modules
 .env
 __pycache__
 firebase-service-account.json
+.streamlit
+model/absensi/*.json
+model/absensi/*.yml

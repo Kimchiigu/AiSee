@@ -1,4 +1,5 @@
 import streamlit as st
+from utils.role import get_user_info
 
 def login_form():
     st.sidebar.markdown("## Login")
@@ -6,8 +7,16 @@ def login_form():
     password = st.sidebar.text_input("Password", type="password")
     
     if st.sidebar.button("Login"):
-        if username == "admin" and password == "password":
-            st.session_state.logged_in = True
-            st.rerun()
+        stored_password, role = get_user_info(username)
+        
+        if stored_password:
+            if password == stored_password:
+                if role in ["admin", "teacher"]:
+                    st.session_state.logged_in = True
+                    st.rerun()
+                else:
+                    st.sidebar.error("You do not have permission to log in.")
+            else:
+                st.sidebar.error("Invalid password.")
         else:
-            st.sidebar.error("Invalid credentials")
+            st.sidebar.error("User not found.")
