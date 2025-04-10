@@ -5,3 +5,5 @@ firebase-service-account.json
 .streamlit
 model/absensi/*.json
 model/absensi/*.yml
+db-design.txt
+debug.log
