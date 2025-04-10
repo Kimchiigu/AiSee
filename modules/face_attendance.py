@@ -198,6 +198,10 @@ def register_user():
     name = st.text_input("Name")
     email = st.text_input("Email")
     role = st.selectbox("Role", ["Student", "Teacher", "Admin"])
+    
+    if role not in ("Teacher", "Admin"):
+        type = st.selectbox("Type", ["School", "University"])
+        grade = st.number_input("Grade/Semester", min_value=1, max_value=15)
 
     # Initialize session state
     if "camera_active" not in st.session_state:
@@ -233,12 +237,22 @@ def register_user():
                     url = upload_to_cloudinary(face, name, idx)
                     urls.append(url)
 
-                db.collection("users").add({
-                    "name": name,
-                    "email": email,
-                    "images": urls,
-                    "role": role.lower()
-                })
+                if role in ("Teacher", "Admin"):
+                    db.collection("users").add({
+                        "name": name,
+                        "email": email,
+                        "images": urls,
+                        "role": role.lower()
+                    })
+                else:
+                    db.collection("users").add({
+                        "name": name,
+                        "email": email,
+                        "images": urls,
+                        "role": role.lower(),
+                        "type": type.lower(),
+                        "grade": grade
+                    })
                 st.success(f"{len(urls)} face images uploaded and user registered!")
             else:
                 st.error("No faces captured. Please try again and ensure your face is visible.")
