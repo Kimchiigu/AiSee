@@ -4,7 +4,6 @@ import numpy as np
 import os
 from PIL import Image
 import base64
-from dotenv import load_dotenv
 import firebase_admin
 from firebase_admin import credentials, firestore, initialize_app
 import cloudinary
@@ -13,17 +12,15 @@ import time
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-load_dotenv()
-
 if not firebase_admin._apps:
-    cred = credentials.Certificate(os.path.join(BASE_DIR, "firebase-service-account.json"))
+    cred = credentials.Certificate(st.secrets["FIREBASE_SERVICE_ACCOUNT"].to_dict())
     initialize_app(cred)
 db = firestore.client()
 
 cloudinary.config(
-    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
-    api_key=os.getenv("CLOUDINARY_API_KEY"),
-    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+    cloud_name=st.secrets["CLOUDINARY_CLOUD_NAME"],
+    api_key=st.secrets["CLOUDINARY_API_KEY"],
+    api_secret=st.secrets["CLOUDINARY_API_SECRET"],
     secure=True
 )
 

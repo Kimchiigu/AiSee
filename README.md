@@ -1,4 +1,4 @@
-<h1 align="center"> AiSee 🎓🤖 </h1>
+# AiSee 🎓🤖
 
 <p align="center">
   <img alt="AiSee Logo" title="AiSee" src="assets/aisee-logo.png" width="200">
@@ -44,12 +44,10 @@ AiSee is an intelligent school attendance system powered by **AI Computer Vision
 
 ## 🔥 Features
 
-- 📷 **Face Registration & Recognition**
-- ✅ **Live Attendance Verification**
-- 🎯 **Cheating Detection via Boundary Box**
-- ☁️ **Cloud Storage for Images**
-- 🔐 **Firebase Integration for User Management**
-- 🌐 **Streamlit Web Interface**
+- 📷 **Register Face**: Capture and store face images for user registration using real-time camera input.
+- ✅ **Verify Face**: Authenticate users through facial recognition for secure attendance logging.
+- 📊 **Attendance Monitoring**: Track and manage attendance records with continuous verification.
+- 🕵️‍♂️ **Exam Supervisor**: Detect cheating behaviors using YOLO for object detection and HaarCascade for face detection within defined boundary zones.
 
 ---
 
@@ -92,26 +90,45 @@ pip install -r requirements.txt
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/YourUsername/aisee.git
+git clone https://github.com/Kimchiigu/AiSee.git
 cd aisee
 ```
 
-### 2. Setup `.env` File
+### 2. Setup `secrets.toml` File
 
-Create a `.env` by copy the `.env.example` file at the root of the project with the following:
+Create a `.streamlit/secrets.toml` file in the `.streamlit/` directory with the following content:
 
-```env
-FIREBASE_API_KEY=
-FIREBASE_AUTH_DOMAIN=
-FIREBASE_PROJECT_ID=
-FIREBASE_STORAGE_BUCKET=
-FIREBASE_MESSAGING_SENDER_ID=
-FIREBASE_APP_ID=
-FIREBASE_MEASUREMENT_ID=
-CLOUDINARY_CLOUD_NAME=
-CLOUDINARY_API_KEY=
-CLOUDINARY_API_SECRET=
+```toml
+# Firebase configuration
+FIREBASE_API_KEY = "your_firebase_api_key"
+FIREBASE_AUTH_DOMAIN = "your_firebase_auth_domain"
+FIREBASE_PROJECT_ID = "your_firebase_project_id"
+FIREBASE_STORAGE_BUCKET = "your_firebase_storage_bucket"
+FIREBASE_MESSAGING_SENDER_ID = "your_firebase_messaging_sender_id"
+FIREBASE_APP_ID = "your_firebase_app_id"
+FIREBASE_MEASUREMENT_ID = "your_firebase_measurement_id"
+
+# Cloudinary configuration
+CLOUDINARY_CLOUD_NAME = "your_cloudinary_cloud_name"
+CLOUDINARY_API_KEY = "your_cloudinary_api_key"
+CLOUDINARY_API_SECRET = "your_cloudinary_api_secret"
+
+# Firebase service account
+[FIREBASE_SERVICE_ACCOUNT]
+type = "service_account"
+project_id = "your_project_id"
+private_key_id = "your_private_key_id"
+private_key = "your_private_key"
+client_email = "your_client_email"
+client_id = "your_client_id"
+auth_uri = "https://accounts.google.com/o/oauth2/auth"
+token_uri = "https://oauth2.googleapis.com/token"
+auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
+client_x509_cert_url = "your_client_x509_cert_url"
+universe_domain = "googleapis.com"
 ```
+
+Replace the placeholder values with your actual Firebase and Cloudinary credentials.
 
 ### 3. Run the Streamlit App
 
@@ -129,12 +146,13 @@ streamlit run main.py
 - Create a project and enable Firestore Database
 - Add a web app and get the configuration keys
 - Enable Authentication → Email/Password
+- Download the service account JSON and embed its contents in the `[FIREBASE_SERVICE_ACCOUNT]` section of `secrets.toml`
 
 ### Cloudinary
 
 - Go to [Cloudinary](https://cloudinary.com/)
 - Create an account and get your API Key, Secret, and Cloud Name
-- Set them in the `.env` file as `CLOUDINARY_URL`
+- Set them in the `secrets.toml` file as shown above
 
 ---
 
