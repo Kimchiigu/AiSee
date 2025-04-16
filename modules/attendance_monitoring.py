@@ -6,20 +6,17 @@ import time
 import csv
 from ultralytics import YOLO
 from datetime import datetime
-from io import BytesIO
+from io import StringIO
 
-# Cache model seperti exam_supervisor.py
 @st.cache_resource
 def load_model():
-    model_path = "model/monitoring/yolov9m.pt"  # Ganti dengan path model YOLO Anda
+    model_path = "model/monitoring/yolov9m.pt"
     if not os.path.exists(model_path):
         st.error(f"Model file not found at {model_path}.")
         st.stop()
     return YOLO(model_path)
 
-### Helper Functions (Disesuaikan dengan exam_supervisor.py) ###
 def open_camera():
-    """Open the default webcam, mirip exam_supervisor.py."""
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         st.error("Error: Could not open webcam. Ensure your webcam is connected.")
@@ -29,7 +26,6 @@ def open_camera():
     return cap
 
 def read_frame(cap):
-    """Read a frame from the camera, mirip exam_supervisor.py."""
     if cap is None or not cap.isOpened():
         return False, None
     ret, frame = cap.read()
@@ -38,20 +34,16 @@ def read_frame(cap):
     return True, cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
 def release_camera(cap):
-    """Release the camera, mirip exam_supervisor.py."""
     if cap is not None and cap.isOpened():
         cap.release()
 
 def draw_seats(frame, seats):
-    """Draw seat bounding boxes and labels, tambahan untuk attendance."""
     frame_copy = frame.copy()
     for label, seat_data in seats.items():
         sx, sy, sw, sh = seat_data["region"]
-        color = (0, 255, 0) if seat_data.get("occupied", False) else (0, 0, 255)
+        color = (0, 255, 0) if seat_data.get("occupied", False) else (255, 0, 0)
         cv2.rectangle(frame_copy, (sx, sy), (sx + sw, sy + sh), color, 2)
         cv2.putText(frame_copy, label, (sx, sy - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-        
-        # Draw duration if monitoring
         if st.session_state.get("monitoring", False):
             if seat_data.get("occupied", False) and seat_data.get("start_time") is not None:
                 current_duration = time.time() - seat_data["start_time"]
@@ -62,11 +54,9 @@ def draw_seats(frame, seats):
             ss = int(total_duration % 60)
             duration_text = f"{mm}:{ss:02d}"
             cv2.putText(frame_copy, duration_text, (sx, sy + sh + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-    
     return frame_copy
 
 def is_person_in_seat(person_box, seat_region):
-    """Check if a person's center is within a seat region."""
     px, py, pw, ph = person_box
     cx = px + pw / 2.0
     cy = py + ph / 2.0
@@ -74,8 +64,7 @@ def is_person_in_seat(person_box, seat_region):
     return (sx <= cx <= sx + sw) and (sy <= cy <= sy + sh)
 
 def download_csv(seats):
-    """Generate and download seat data as CSV."""
-    output = BytesIO()
+    output = StringIO()
     writer = csv.writer(output)
     writer.writerow(["Seat Label", "Accumulated Time (s)"])
     for label, seat_data in seats.items():
@@ -83,17 +72,16 @@ def download_csv(seats):
         if seat_data.get("occupied", False) and seat_data.get("start_time"):
             total_time += time.time() - seat_data["start_time"]
         writer.writerow([label, f"{total_time:.2f}"])
-    output.seek(0)
-    return output
+    csv_data = output.getvalue()
+    output.close()
+    return csv_data.encode('utf-8')
 
-### Main Function ###
 def monitor_attendance():
     st.title("Seat Occupancy Monitoring")
     st.write("Configure seat regions and monitor student presence.")
 
     model = load_model()
 
-    # Inisialisasi session state
     if "seats" not in st.session_state:
         st.session_state.seats = {}
     if "snapshot" not in st.session_state:
@@ -103,7 +91,6 @@ def monitor_attendance():
     if "run" not in st.session_state:
         st.session_state.run = False
 
-    # Step 1: Capture Snapshot
     if st.session_state.snapshot is None:
         st.subheader("Step 1: Capture Snapshot")
         frame_placeholder = st.empty()
@@ -142,14 +129,13 @@ def monitor_attendance():
                         st.error("Error: Could not read frame from webcam.")
                         break
                     frame_placeholder.image(frame, channels="RGB", caption="Live Feed", use_container_width=True)
-                    time.sleep(0.05)  # Jeda seperti exam_supervisor.py
+                    time.sleep(0.05)
                     if not st.session_state.run:
                         break
                 release_camera(cap)
             else:
                 st.session_state.run = False
 
-    # Step 2: Configure Seats
     elif not st.session_state.monitoring:
         st.subheader("Step 2: Configure Seat Regions")
         snapshot_placeholder = st.empty()
@@ -211,7 +197,6 @@ def monitor_attendance():
         else:
             st.warning("Please add at least one seat before starting monitoring.")
 
-    # Step 3: Monitor Seats
     else:
         st.subheader("Step 3: Monitoring Seats")
         frame_placeholder = st.empty()
@@ -254,8 +239,7 @@ def monitor_attendance():
                         st.error("Error: Could not read frame from webcam.")
                         break
 
-                    # Run YOLO inference
-                    results = model(frame, conf=0.5)  # Mirip exam_supervisor.py
+                    results = model(frame, conf=0.7)
                     person_detections = []
                     if len(results) > 0:
                         boxes = results[0].boxes
@@ -266,13 +250,14 @@ def monitor_attendance():
                             x_min, y_min, x_max, y_max = xyxy
                             w = x_max - x_min
                             h = y_max - y_min
-                            if cls == 0:  # Class 0 => person
+                            if cls == 0:
                                 person_detections.append({
                                     "box": (x_min, y_min, w, h),
                                     "conf": conf
                                 })
+                            else:
+                                print(f"Ignored detection: class={model.names[cls]}, conf={conf}")
 
-                    # Check occupancy
                     for seat_label, seat_data in st.session_state.seats.items():
                         seat_region = seat_data["region"]
                         seat_occupied_now = False
@@ -281,7 +266,6 @@ def monitor_attendance():
                                 seat_occupied_now = True
                                 break
 
-                        # Time tracking
                         if seat_occupied_now and not seat_data["occupied"]:
                             seat_data["occupied"] = True
                             seat_data["start_time"] = time.time()
@@ -291,15 +275,29 @@ def monitor_attendance():
                             seat_data["start_time"] = None
                             seat_data["occupied"] = False
 
-                    # Draw seats and YOLO boxes
                     frame_with_seats = draw_seats(frame, st.session_state.seats)
-                    annotated_frame = results[0].plot()  # Gunakan YOLO plot seperti exam_supervisor.py
-                    annotated_frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-                    # Gabungkan seat boxes ke YOLO frame
-                    final_frame = np.where(frame_with_seats != frame, frame_with_seats, annotated_frame_rgb)
+                    final_frame = frame_with_seats.copy()
+                    persons_inside_seats = []
+                    for det in person_detections:
+                        for seat_data in st.session_state.seats.values():
+                            if is_person_in_seat(det["box"], seat_data["region"]):
+                                persons_inside_seats.append(det)
+                                break
 
+                    for idx, det in enumerate(persons_inside_seats, start=1):
+                        print(f"Drawing person_{idx} at {det['box']}")
+                        x_min, y_min, w_box, h_box = det["box"]
+                        conf = det["conf"]
+                        x_max = x_min + w_box
+                        y_max = y_min + h_box
+                        cv2.rectangle(final_frame, (int(x_min), int(y_min)), (int(x_max), int(y_max)), (0, 0, 255), 2)  # Red in RGB
+                        label = f"person_{idx} [{conf:.2f}]"
+                        cv2.putText(final_frame, label, (int(x_min), int(y_min) - 5),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+
+                    print("Final frame sample pixel:", final_frame[0, 0])
                     frame_placeholder.image(final_frame, channels="RGB", caption="Monitoring Seats", use_container_width=True)
-                    time.sleep(0.05)  # Jeda seperti exam_supervisor.py
+                    time.sleep(0.05)
 
                     if not st.session_state.run:
                         break
@@ -307,6 +305,5 @@ def monitor_attendance():
             else:
                 st.session_state.run = False
 
-### Render Function ###
 def render():
     monitor_attendance()

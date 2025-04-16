@@ -1,0 +1,159 @@
+users (collection)
+|_ user123 (document ID)
+   |_ name: "Alice Wonderland"
+   |_ email: "alice@example.com"
+   |_ role: "student"
+   |_ images: ["url_alice1", "url_alice2"]
+   |_ score: 88
+|_ user456 (document ID)
+   |_ name: "Bob The Builder"
+   |_ email: "bob@example.com"
+   |_ role: "student"
+   |_ images: ["url_bob1"]
+   |_ score: 76
+|_ user789 (document ID)
+   |_ name: "Charlie Chaplin"
+   |_ email: "charlie@example.com"
+   |_ role: "student"
+   |_ images: []
+   |_ score: 92
+
+reports (collection)
+|_ user123_semester-1 (document ID)
+   |_ userId: "user123"
+   |_ semester: "semester-1"
+   |_ overallWeight: 21
+   |_ overallScore: 85
+|_ user456_semester-1 (document ID)
+   |_ userId: "user456"
+   |_ semester: "semester-1"
+   |_ overallWeight: 21
+   |_ overallScore: 78
+|_ user789_semester-1 (document ID)
+   |_ userId: "user789"
+   |_ semester: "semester-1"
+   |_ overallWeight: 21
+   |_ overallScore: 90
+
+subjects (collection)
+|_ user123_semester-1_math (document ID)
+   |_ reportId: "user123_semester-1"
+   |_ name: "math"
+   |_ passingScore: 60
+   |_ weight: 4
+   |_ isPass: true
+|_ user123_semester-1_science (document ID)
+   |_ reportId: "user123_semester-1"
+   |_ name: "science"
+   |_ passingScore: 65
+   |_ weight: 3
+   |_ isPass: true
+|_ user456_semester-1_math (document ID)
+   |_ reportId: "user456_semester-1"
+   |_ name: "math"
+   |_ passingScore: 60
+   |_ weight: 4
+   |_ isPass: true
+|_ user789_semester-1_history (document ID)
+   |_ reportId: "user789_semester-1"
+   |_ name: "history"
+   |_ passingScore: 55
+   |_ weight: 5
+   |_ isPass: true
+
+assignments (collection)
+|_ user123_semester-1_math_assignment1 (document ID)
+   |_ subjectId: "user123_semester-1_math"
+   |_ weight: 20
+   |_ scores: [100, 90, 75, 100, 90]
+|_ user456_semester-1_math_assignment1 (document ID)
+   |_ subjectId: "user456_semester-1_math"
+   |_ weight: 20
+   |_ scores: [80, 70, 65, 90, 75]
+|_ user789_semester-1_history_assignment1 (document ID)
+   |_ subjectId: "user789_semester-1_history"
+   |_ weight: 15
+   |_ scores: [95, 88, 92]
+
+midExams (collection)
+|_ user123_semester-1_math_midterm (document ID)
+   |_ subjectId: "user123_semester-1_math"
+   |_ weight: 30
+   |_ score: 100
+|_ user456_semester-1_math_midterm (document ID)
+   |_ subjectId: "user456_semester-1_math"
+   |_ weight: 30
+   |_ score: 70
+|_ user789_semester-1_history_midterm (document ID)
+   |_ subjectId: "user789_semester-1_history"
+   |_ weight: 35
+   |_ score: 95
+
+finalExams (collection)
+|_ user123_semester-1_math_final (document ID)
+   |_ subjectId: "user123_semester-1_math"
+   |_ weight: 50
+   |_ score: 88
+|_ user456_semester-1_math_final (document ID)
+   |_ subjectId: "user456_semester-1_math"
+   |_ weight: 50
+   |_ score: 80
+|_ user789_semester-1_history_final (document ID)
+   |_ subjectId: "user789_semester-1_history"
+   |_ weight: 50
+   |_ score: 90
+
+attendance (collection)
+|_ user123_semester-1_math (document ID)
+   |_ userId: "user123"
+   |_ semester: "semester-1"
+   |_ subject: "math"
+   |_ minimum: 10
+   |_ maximum: 12
+   |_ isPass: true
+|_ user456_semester-1_math (document ID)
+   |_ userId: "user456"
+   |_ semester: "semester-1"
+   |_ subject: "math"
+   |_ minimum: 10
+   |_ maximum: 12
+   |_ isPass: false
+|_ user789_semester-1_history (document ID)
+   |_ userId: "user789"
+   |_ semester: "semester-1"
+   |_ subject: "history"
+   |_ minimum: 15
+   |_ maximum: 18
+   |_ isPass: true
+
+attendanceLogs (collection)
+|_ user123_semester-1_math_session1 (document ID)
+   |_ attendanceId: "user123_semester-1_math"
+   |_ sessionId: "session1"
+   |_ timestamp: "2025-02-11T07:30:20"
+   |_ isVerified: true
+|_ user123_semester-1_math_session2 (document ID)
+   |_ attendanceId: "user123_semester-1_math"
+   |_ sessionId: "session2"
+   |_ timestamp: "2025-02-12T08:30:20"
+   |_ isVerified: true
+|_ user456_semester-1_math_session1 (document ID)
+   |_ attendanceId: "user456_semester-1_math"
+   |_ sessionId: "session1"
+   |_ timestamp: "2025-02-11T09:00:00"
+   |_ isVerified: true
+|_ user789_semester-1_history_session1 (document ID)
+   |_ attendanceId: "user789_semester-1_history"
+   |_ sessionId: "session1"
+   |_ timestamp: "2025-02-13T10:15:30"
+   |_ isVerified: true
+|_ user789_semester-1_history_session2 (document ID)
+   |_ attendanceId: "user789_semester-1_history"
+   |_ sessionId: "session2"
+   |_ timestamp: "2025-02-14T11:00:00"
+   |_ isVerified: true
+|_ user789_semester-1_history_session3 (document ID)
+   |_ attendanceId: "user789_semester-1_history"
+   |_ sessionId: "session3"
+   |_ timestamp: "2025-02-15T09:45:00"
+   |_ isVerified: false

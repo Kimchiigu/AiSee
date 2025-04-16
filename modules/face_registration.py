@@ -3,28 +3,23 @@ import cv2
 import numpy as np
 import os
 from PIL import Image
-import requests
 import base64
 from dotenv import load_dotenv
 import firebase_admin
 from firebase_admin import credentials, firestore, initialize_app
 import cloudinary
 import cloudinary.uploader
-import cloudinary.api
 import time
-import json
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 load_dotenv()
 
-# Initialize Firebase
 if not firebase_admin._apps:
     cred = credentials.Certificate(os.path.join(BASE_DIR, "firebase-service-account.json"))
     initialize_app(cred)
 db = firestore.client()
 
-# Initialize Cloudinary
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
     api_key=os.getenv("CLOUDINARY_API_KEY"),
@@ -93,7 +88,6 @@ def capture_faces(cap, placeholder, num_images=50, delay=0.1):
         if len(faces) > 0:
             x, y, w, h = faces[0]
             face_rgb = frame[y:y+h, x:x+w]
-            # Convert to grayscale
             face_gray = cv2.cvtColor(face_rgb, cv2.COLOR_RGB2GRAY)
             captured_faces.append(face_gray)
         time.sleep(delay)
@@ -101,10 +95,8 @@ def capture_faces(cap, placeholder, num_images=50, delay=0.1):
 
 def upload_to_cloudinary(image_np, name, idx):
     """Upload a grayscale image to Cloudinary and return its URL."""
-    # Ensure image is in grayscale (single channel)
-    if len(image_np.shape) == 3:  # If still RGB
+    if len(image_np.shape) == 3:
         image_np = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
-    # Convert grayscale to 3-channel for JPEG compatibility
     image_np_3ch = cv2.cvtColor(image_np, cv2.COLOR_GRAY2RGB)
     _, buffer = cv2.imencode('.jpg', image_np_3ch)
     b64_img = base64.b64encode(buffer).decode()
@@ -131,13 +123,11 @@ def register_user():
         elif type == "University":
             semester = st.number_input("Semester", min_value=1, max_value=15)
 
-    # Initialize session state
     if "camera_active" not in st.session_state:
         st.session_state.camera_active = False
     if "capturing" not in st.session_state:
         st.session_state.capturing = False
 
-    # Camera handling
     preview_placeholder = st.empty()
     cap = None
 
@@ -153,11 +143,9 @@ def register_user():
         if cap is None:
             return
 
-        # Show live feed
         if not st.session_state.capturing:
             simulate_live_feed(preview_placeholder, cap)
 
-        # Capture Face button
         capture_button = st.button("Capture Face")
         if capture_button:
             st.session_state.capturing = True
@@ -208,16 +196,14 @@ def register_user():
             st.session_state.capturing = False
             st.rerun()
 
-        # Stop Camera button
         if st.button("Stop Camera"):
             release_camera(cap)
             st.session_state.camera_active = False
             st.session_state.capturing = False
             st.rerun()
 
-        # Ensure camera is released if page is closed
         if cap is not None:
-            simulate_live_feed(preview_placeholder, cap)  # Keep feed alive
+            simulate_live_feed(preview_placeholder, cap)
 
 def render():
     st.title("Face Registration")

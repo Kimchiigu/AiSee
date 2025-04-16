@@ -1,8 +1,7 @@
 import streamlit as st
 from utils.auth import login_form
-from modules import dashboard, face_registration, face_verification, attendance_monitoring, exam_supervisor, score_analysis
+from modules import face_registration, face_verification, attendance_monitoring, exam_supervisor
 
-# Page configuration with better defaults
 st.set_page_config(
     page_title="AIsee - Intelligent Student Monitoring",
     page_icon="👁️",
@@ -15,12 +14,10 @@ st.set_page_config(
     }
 )
 
-# Custom CSS for better styling
 def load_css():
     with open("static/styles.css") as f:
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
     
-    # Additional inline CSS for improvements
     st.markdown("""
     <style>
         /* Main content area */
@@ -89,13 +86,11 @@ def load_css():
 
 load_css()
 
-# Initialize session state
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 if 'page' not in st.session_state:
     st.session_state.page = "Dashboard"
 
-# Sidebar content
 def render_sidebar():
     st.sidebar.markdown("# 👁️ AIsee")
     st.sidebar.markdown("**Intelligent Student Monitoring System**")
@@ -107,14 +102,11 @@ def render_sidebar():
         
         st.sidebar.markdown('<p class="nav-header">Navigation</p>', unsafe_allow_html=True)
         
-        # Navigation buttons with icons
         nav_options = {
-            "Dashboard": "📊",
             "Face Registration": "📸",
             "Face Verification": "👤",
             "Attendance Monitoring": "✅",
             "Exam Supervisor": "📝",
-            "Score Analysis": "📈"
         }
         
         for page_name, icon in nav_options.items():
@@ -123,7 +115,6 @@ def render_sidebar():
         
         st.sidebar.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
         
-        # Logout button with custom class
         st.sidebar.markdown('<div class="logout-btn">', unsafe_allow_html=True)
         if st.sidebar.button("🚪 Logout"):
             st.session_state.logged_in = False
@@ -131,15 +122,12 @@ def render_sidebar():
             st.rerun()
         st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
-# Main content
 def render_main():
     if not st.session_state.logged_in:
         login_form()
     else:
         page = st.session_state.page
-        if page == "Dashboard":
-            dashboard.render()
-        elif page == "Face Registration":
+        if page == "Face Registration":
             face_registration.render()
         elif page == "Face Verification":
             face_verification.render()
@@ -147,9 +135,6 @@ def render_main():
             attendance_monitoring.render()
         elif page == "Exam Supervisor":
             exam_supervisor.render()
-        elif page == "Score Analysis":
-            score_analysis.render()
 
-# App layout
 render_sidebar()
 render_main()

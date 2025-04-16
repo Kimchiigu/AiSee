@@ -4,7 +4,6 @@ import numpy as np
 import os
 import requests
 import cloudinary
-import cloudinary.uploader
 import cloudinary.api
 import json
 from dotenv import load_dotenv
@@ -17,13 +16,11 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 load_dotenv()
 
-# Initialize Firebase
 if not firebase_admin._apps:
     cred = credentials.Certificate(os.path.join(BASE_DIR, "firebase-service-account.json"))
     initialize_app(cred)
 db = firestore.client()
 
-# Initialize Cloudinary
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
     api_key=os.getenv("CLOUDINARY_API_KEY"),
@@ -213,26 +210,22 @@ def verify_user():
         face = capture_face_for_verification(timeout=5)
         if face is not None and isinstance(face, np.ndarray):
             label_id, confidence = face_recognizer.predict(face)
-            if confidence < 100:  # Adjust threshold as needed
+            if confidence < 100:
                 folder_name = next((folder for folder, id in label_mapping.items() if id == label_id), None)
                 if folder_name:
-                    # Check if predicted name matches input name
                     if folder_name.lower() == name.lower():
                         st.success(f"✅ Welcome back, {folder_name}! Confidence: {confidence:.2f}")
                         
-                        # Get user ID
                         user_id = get_user_id_by_name(name)
                         if not user_id:
                             st.error("User not found in database.")
                             return
 
-                        # Get attendance ID
                         attendance_id = get_attendance_id(user_id, subject)
                         if not attendance_id:
                             st.error(f"No attendance record found for {name} in subject {subject}.")
                             return
 
-                        # Save to attendanceLogs
                         session_id = f"session{session}"
                         timestamp = datetime.now().isoformat()
                         db.collection("attendanceLogs").add({

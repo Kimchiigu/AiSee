@@ -31,40 +31,30 @@ def render():
     if stop_button:
         st.session_state.run = False
 
-    cap = cv2.VideoCapture(0)  # 0 is the default webcam; change if using a different camera
+    cap = cv2.VideoCapture(0)
 
     if not cap.isOpened():
         st.error("Error: Could not open webcam. Ensure your webcam is connected and accessible.")
         st.stop()
 
-    # Set webcam resolution (optional)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
-    # Process the webcam feed
     while st.session_state.run:
         ret, frame = cap.read()
         if not ret:
             st.error("Error: Could not read frame from webcam.")
             break
 
-        # Perform detection with YOLO
-        results = model.predict(frame, conf=0.5)  # Confidence threshold based on your model's performance
-
-        # Draw bounding boxes and labels on the frame
-        annotated_frame = results[0].plot()  # This draws boxes with class names and confidence scores
-
-        # Convert the frame from BGR (OpenCV) to RGB (Streamlit)
+        results = model.predict(frame, conf=0.5)
+        annotated_frame = results[0].plot()
         annotated_frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-
-        # Display the frame in Streamlit
         frame_placeholder.image(annotated_frame_rgb, caption="Live Detection", use_container_width=True)
 
-        # Check for detected classes and provide feedback
         for result in results[0].boxes:
-            class_id = int(result.cls)  # Class ID
-            class_name = model.names[class_id]  # Class name
-            confidence = float(result.conf)  # Confidence score
+            class_id = int(result.cls)
+            class_name = model.names[class_id]
+            confidence = float(result.conf)
             if "cheating" in class_name.lower():
                 st.warning(f"Cheating Detected! Confidence: {confidence:.2f}")
             elif "mobile" in class_name.lower():

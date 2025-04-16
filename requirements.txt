@@ -1,1 +1,16 @@
 streamlit
+firebase_admin
+cloudinary
+numpy
+flask
+cv2
+csv
+ultralytics
+io
+pandas
+plotly
+os
+pil
+base64
+dotenv
+requests
