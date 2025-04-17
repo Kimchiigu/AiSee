@@ -207,7 +207,7 @@ def verify_user():
     session = st.number_input("Session", min_value=1, value=1)
 
     if st.button("Scan Face"):
-        status = 1
+        status = 0
         verified_success = False
         if not name or not subject or not session:
             st.error("Please fill in all fields: Name, Subject, and Session.")

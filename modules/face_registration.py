@@ -150,7 +150,7 @@ def register_user():
             return
 
         if not st.session_state.capturing:
-            simulate_live_feed(preview_placeholder, cap)
+            simulate_live_feed(preview_placeholder)
 
         capture_button = st.button("Capture Face")
         if capture_button:
@@ -207,7 +207,7 @@ def register_user():
             st.rerun()
 
         if cap is not None:
-            simulate_live_feed(preview_placeholder, cap)
+            simulate_live_feed(preview_placeholder)
 
 def render():
     st.title("Face Registration")
