@@ -7,6 +7,7 @@ import csv
 from ultralytics import YOLO
 from datetime import datetime
 from io import StringIO
+import glob
 
 @st.cache_resource
 def load_model():
@@ -16,26 +17,30 @@ def load_model():
         st.stop()
     return YOLO(model_path)
 
-def open_camera():
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
-        st.error("Error: Could not open webcam. Ensure your webcam is connected.")
+def fetch_latest_image_from_flask():
+    """Fetch the latest image from the 'uploaded_images' folder."""
+    try:
+        # Get the list of images in the 'uploaded_images' folder, sorted by modification time
+        images = sorted(glob.glob("./uploaded_images/*.jpg"), key=os.path.getmtime, reverse=True)
+
+        if not images:
+            st.error("No images found in the 'uploaded_images' folder.")
+            return None
+
+        latest_image_path = images[0]  # Get the most recent image
+        image = cv2.imread(latest_image_path)  # Read the image using OpenCV
+        return image
+
+    except Exception as e:
+        st.error(f"Error fetching image: {e}")
         return None
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    return cap
 
-def read_frame(cap):
-    if cap is None or not cap.isOpened():
+def read_frame_from_flask():
+    image = fetch_latest_image_from_flask()
+    if image is None:
         return False, None
-    ret, frame = cap.read()
-    if not ret:
-        return False, None
-    return True, cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    return True, cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-def release_camera(cap):
-    if cap is not None and cap.isOpened():
-        cap.release()
 
 def draw_seats(frame, seats):
     frame_copy = frame.copy()
@@ -107,34 +112,26 @@ def monitor_attendance():
             frame_placeholder.empty()
 
         if capture_button:
-            cap = open_camera()
-            if cap:
-                ret, frame = read_frame(cap)
-                if ret:
-                    st.session_state.snapshot = frame
-                    st.session_state.run = False
-                    release_camera(cap)
-                    st.success("Snapshot captured! Proceed to configure seats.")
-                    st.rerun()
-                release_camera(cap)
+            ret, frame = read_frame_from_flask()
+            if ret:
+                st.session_state.snapshot = frame
+                st.session_state.run = False
+                st.success("Snapshot captured! Proceed to configure seats.")
+                st.rerun()
             else:
                 st.error("Failed to capture snapshot.")
 
         if st.session_state.run:
-            cap = open_camera()
-            if cap:
-                while st.session_state.run:
-                    ret, frame = read_frame(cap)
-                    if not ret:
-                        st.error("Error: Could not read frame from webcam.")
-                        break
-                    frame_placeholder.image(frame, channels="RGB", caption="Live Feed", use_container_width=True)
-                    time.sleep(0.05)
-                    if not st.session_state.run:
-                        break
-                release_camera(cap)
-            else:
-                st.session_state.run = False
+            while st.session_state.run:
+                ret, frame = read_frame_from_flask()
+                if not ret:
+                    st.error("Error: Could not fetch image.")
+                    break
+                frame_placeholder.image(frame, channels="RGB", caption="Live Feed", use_container_width=True)
+                time.sleep(0.05)  # Jeda seperti exam_supervisor.py
+                if not st.session_state.run:
+                    break
+
 
     elif not st.session_state.monitoring:
         st.subheader("Step 2: Configure Seat Regions")
@@ -231,12 +228,12 @@ def monitor_attendance():
             )
 
         if st.session_state.run:
-            cap = open_camera()
+            cap = read_frame_from_flask()
             if cap:
                 while st.session_state.run:
-                    ret, frame = read_frame(cap)
+                    ret, frame = read_frame_from_flask()
                     if not ret:
-                        st.error("Error: Could not read frame from webcam.")
+                        st.error("Error: Could not fetch image.")
                         break
 
                     results = model(frame, conf=0.7)
@@ -301,7 +298,6 @@ def monitor_attendance():
 
                     if not st.session_state.run:
                         break
-                release_camera(cap)
             else:
                 st.session_state.run = False
 

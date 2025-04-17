@@ -5,3 +5,4 @@ firebase-service-account.json
 model/absensi/*.json
 model/absensi/*.yml
 debug.log
+uploaded_images

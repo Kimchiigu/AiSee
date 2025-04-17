@@ -3,6 +3,23 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 import os
+import glob
+
+def fetch_latest_image_from_flask():
+    try:
+        images = sorted(glob.glob("./uploaded_images/*.jpg"), key=os.path.getmtime, reverse=True)
+
+        if not images:
+            st.error("No images found in the 'uploaded_images' folder.")
+            return None
+
+        latest_image_path = images[0]
+        image = cv2.imread(latest_image_path) 
+        return image
+
+    except Exception as e:
+        st.error(f"Error fetching image: {e}")
+        return None
 
 @st.cache_resource
 def load_model():
@@ -16,35 +33,26 @@ def render():
     model = load_model()
 
     st.title("Real-Time Exam Cheating Detection")
-    st.write("This app uses a fine-tuned YOLOv9 model to detect 'Cheating', 'Mobile', or 'Normal' behaviors in real-time via webcam.")
+    st.write("This app uses a fine-tuned YOLOv9 model to detect 'Cheating', 'Mobile', or 'Normal' behaviors in real-time via Camera.")
 
     frame_placeholder = st.empty()
 
     if 'run' not in st.session_state:
         st.session_state.run = False
 
-    start_button = st.button("Start Webcam")
-    stop_button = st.button("Stop Webcam")
+    start_button = st.button("Start Camera")
+    stop_button = st.button("Stop Camera")
 
     if start_button:
         st.session_state.run = True
     if stop_button:
         st.session_state.run = False
 
-    cap = cv2.VideoCapture(0)
-
-    if not cap.isOpened():
-        st.error("Error: Could not open webcam. Ensure your webcam is connected and accessible.")
-        st.stop()
-
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-
     while st.session_state.run:
-        ret, frame = cap.read()
-        if not ret:
-            st.error("Error: Could not read frame from webcam.")
-            break
+        frame = fetch_latest_image_from_flask()
+        if frame is None:
+            continue
+
 
         results = model.predict(frame, conf=0.5)
         annotated_frame = results[0].plot()
@@ -62,5 +70,4 @@ def render():
             elif "normal" in class_name.lower():
                 st.success(f"Normal Behavior Detected! Confidence: {confidence:.2f}")
 
-    cap.release()
-    st.write("Webcam stopped.")
+    st.write("Camera stopped.")

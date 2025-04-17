@@ -10,8 +10,20 @@ import firebase_admin
 from firebase_admin import credentials, firestore, initialize_app
 from datetime import datetime
 import time
+import glob
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+ESP32_IP = "http://192.168.1.14" # Replace with your ESP32 IP address
+
+with open('./ubidots-config.json', 'r') as f:
+    config = json.load(f)
+UBIDOTS_TOKEN = config["UBIDOTS_TOKEN"]
+DEVICE_LABEL = config["DEVICE_LABEL"]
+attendance_name = config["attendant_names"]
+attendance_subject = config["attendant_subjects"]
+attendance_time = config["attendant_times"]
+
 
 if not firebase_admin._apps:
     cred = credentials.Certificate(st.secrets["FIREBASE_SERVICE_ACCOUNT"].to_dict())
@@ -32,35 +44,43 @@ TRAINED_FOLDERS_FILE = 'model/absensi/trained_folders.json'
 LABEL_MAPPING_FILE = 'model/absensi/label_mapping.json'
 
 ### Helper Functions ###
-def get_camera_indices():
-    """Detect available camera indices."""
-    camera_indices = [] 
-    for i in range(50):
-        cap = cv2.VideoCapture(i)
-        if cap.isOpened():
-            camera_indices.append(i)
-            cap.release()
-    return camera_indices
+def fetch_latest_image_from_flask():
+    try:
+        images = sorted(glob.glob("./uploaded_images/*.jpg"), key=os.path.getmtime, reverse=True)
 
-def get_camera():
-    """Open the first available camera."""
-    camera_indices = get_camera_indices()
-    if not camera_indices:
-        st.error("No camera available.")
+        if not images:
+            st.error("No images found in the 'uploaded_images' folder.")
+            return None
+
+        latest_image_path = images[0] 
+        image = cv2.imread(latest_image_path)
+        return image
+
+    except Exception as e:
+        st.error(f"Error fetching image: {e}")
         return None
-    return cv2.VideoCapture(camera_indices[0])
 
-def release_camera(cap):
-    """Release the camera resource."""
-    if cap is not None and cap.isOpened():
-        cap.release()
 
-def capture_frame(cap):
-    """Capture a single frame from the camera."""
-    ret, frame = cap.read()
-    if not ret:
-        return None
-    return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+def send_to_ubidots(name, subject, time):
+    """Sends the data to Ubidots."""
+    url = f"https://industrial.api.ubidots.com/api/v1.6/devices/{DEVICE_LABEL}"
+    headers = {"X-Auth-Token": UBIDOTS_TOKEN, "Content-Type": "application/json"}
+    data = {
+        attendance_name: {
+            "value": 1,  # Dummy value (Ubidots requires a number)
+            "context" : {"name": name}  # Store the name here
+        },
+        attendance_subject: {
+            "value": 1,  # Dummy value (Ubidots requires a number)
+            "context" : {"subject": subject}  # Store the subject here
+        }, 
+        attendance_time: {
+            "value": 1,  # Dummy value (Ubidots requires a number)
+            "context" : {"time": time}  # Store the time here
+        }
+    }
+    response = requests.post(url, json=data, headers=headers)
+
 
 def detect_and_draw_faces(frame):
     """Detect faces and draw rectangles on the frame."""
@@ -145,24 +165,24 @@ def train_model():
     save_trained_folders(trained_folders)
     save_label_mapping(label_mapping)
 
-def capture_face_for_verification(timeout=5):
-    """Capture a single face for verification."""
-    cap = get_camera()
-    if cap is None:
+def capture_face_for_verification(timeout=5): 
+    frame = fetch_latest_image_from_flask()
+    
+    if frame is None:
+        st.error("No image found.")
         return None
     
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        frame = capture_frame(cap)
-        if frame is None:
-            continue
-        _, faces = detect_and_draw_faces(frame)
-        if len(faces) > 0:
-            x, y, w, h = faces[0]
-            face = cv2.cvtColor(frame[y:y+h, x:x+w], cv2.COLOR_RGB2GRAY)
-            release_camera(cap)
-            return face
-    release_camera(cap)
+    _, faces = detect_and_draw_faces(frame)
+    
+    # Show Image Temporarily
+    st.image(frame, channels="RGB", use_container_width=True)
+    
+    if len(faces) > 0:
+        x, y, w, h = faces[0]
+        face = cv2.cvtColor(frame[y:y+h, x:x+w], cv2.COLOR_RGB2GRAY)
+        return face
+    
+    st.warning("No face detected.")
     return None
 
 def get_user_id_by_name(name):
@@ -187,6 +207,8 @@ def verify_user():
     session = st.number_input("Session", min_value=1, value=1)
 
     if st.button("Scan Face"):
+        status = 1
+        verified_success = False
         if not name or not subject or not session:
             st.error("Please fill in all fields: Name, Subject, and Session.")
             return
@@ -216,11 +238,15 @@ def verify_user():
                         user_id = get_user_id_by_name(name)
                         if not user_id:
                             st.error("User not found in database.")
+                            
+                            response = requests.post(ESP32_IP, data={"verify": "success" if status else "fail"})
                             return
 
                         attendance_id = get_attendance_id(user_id, subject)
                         if not attendance_id:
                             st.error(f"No attendance record found for {name} in subject {subject}.")
+                            
+                            response = requests.post(ESP32_IP, data={"verify": "success" if status else "fail"})
                             return
 
                         session_id = f"session{session}"
@@ -231,6 +257,15 @@ def verify_user():
                             "timestamp": timestamp,
                             "isVerified": True
                         })
+                        
+                        # Send data to Ubidots
+                        send_to_ubidots(name, subject, timestamp)
+                        
+                        # Send data to ESP32
+                        status = 1
+                        
+                        response = requests.post(ESP32_IP, data={"verify": "success" if status else "fail"})
+                        
                         st.success(f"Attendance logged for {name} in {subject}, session {session}.")
                     else:
                         st.error(f"❌ Name mismatch: Predicted {folder_name}, but you entered {name}.")
@@ -240,6 +275,7 @@ def verify_user():
                 st.warning("❌ Face not recognized.")
         else:
             st.error("No face detected or invalid format.")
+
 
 def render():
     st.title("Face Verification")

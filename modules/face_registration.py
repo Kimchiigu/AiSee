@@ -9,8 +9,18 @@ from firebase_admin import credentials, firestore, initialize_app
 import cloudinary
 import cloudinary.uploader
 import time
+import json
+import requests
+import glob
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+with open('./ubidots-config.json', 'r') as f:
+    config = json.load(f)
+UBIDOTS_TOKEN = config["UBIDOTS_TOKEN"]
+DEVICE_LABEL = config["DEVICE_LABEL"]
+REGISTRATION_IMAGE = config["registration_image"]
+
 
 if not firebase_admin._apps:
     cred = credentials.Certificate(st.secrets["FIREBASE_SERVICE_ACCOUNT"].to_dict())
@@ -27,35 +37,34 @@ cloudinary.config(
 face_cascade = cv2.CascadeClassifier('model/absensi/haarcascade_frontalface_default.xml')
 
 ### Helper Functions ###
-def get_camera_indices():
-    """Detect available camera indices."""
-    camera_indices = [] 
-    for i in range(50):
-        cap = cv2.VideoCapture(i)
-        if cap.isOpened():
-            camera_indices.append(i)
-            cap.release()
-    return camera_indices
+def fetch_latest_image_from_flask():
+    try:
+        images = sorted(glob.glob("./uploaded_images/*.jpg"), key=os.path.getmtime, reverse=True)
 
-def get_camera():
-    """Open the first available camera."""
-    camera_indices = get_camera_indices()
-    if not camera_indices:
-        st.error("No camera available.")
+        if not images:
+            st.error("No images found in the 'uploaded_images' folder.")
+            return None
+
+        latest_image_path = images[0]
+        image = cv2.imread(latest_image_path)
+        return image
+
+    except Exception as e:
+        st.error(f"Error fetching image: {e}")
         return None
-    return cv2.VideoCapture(camera_indices[0])
 
-def release_camera(cap):
-    """Release the camera resource."""
-    if cap is not None and cap.isOpened():
-        cap.release()
+def send_to_ubidots(image_url):
+    """Sends the image URL to Ubidots."""
+    url = f"https://industrial.api.ubidots.com/api/v1.6/devices/{DEVICE_LABEL}"
+    headers = {"X-Auth-Token": UBIDOTS_TOKEN, "Content-Type": "application/json"}
+    data = {
+        REGISTRATION_IMAGE: {
+            "value": 1,  # Dummy value (Ubidots requires a number)
+            "context": {"url": image_url}  # Store the image URL here
+        }
+    }
+    response = requests.post(url, json=data, headers=headers)
 
-def capture_frame(cap):
-    """Capture a single frame from the camera."""
-    ret, frame = cap.read()
-    if not ret:
-        return None
-    return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
 def detect_and_draw_faces(frame):
     """Detect faces and draw rectangles on the frame."""
@@ -65,19 +74,19 @@ def detect_and_draw_faces(frame):
         cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
     return frame, faces
 
-def simulate_live_feed(placeholder, cap):
+def simulate_live_feed(placeholder):
     """Display a single frame for live feed."""
-    frame = capture_frame(cap)
+    frame = fetch_latest_image_from_flask()
     if frame is None:
         return
     frame, _ = detect_and_draw_faces(frame)
     placeholder.image(frame, channels="RGB", use_container_width=True)
 
-def capture_faces(cap, placeholder, num_images=50, delay=0.1):
+def capture_faces(placeholder, num_images=50, delay=0.1):
     """Capture multiple face images with a delay, showing live feed."""
     captured_faces = []
     for _ in range(num_images):
-        frame = capture_frame(cap)
+        frame = fetch_latest_image_from_flask()
         if frame is None:
             continue
         frame_with_faces, faces = detect_and_draw_faces(frame)
@@ -136,7 +145,7 @@ def register_user():
     if st.session_state.camera_active:
         st.info("Camera is on. Adjust your position and click 'Capture Face' when ready.")
         
-        cap = get_camera()
+        cap = fetch_latest_image_from_flask()
         if cap is None:
             return
 
@@ -147,7 +156,7 @@ def register_user():
         if capture_button:
             st.session_state.capturing = True
             st.info("Capturing 50 images... please hold still for 5 seconds.")
-            faces = capture_faces(cap, preview_placeholder, num_images=50, delay=0.1)
+            faces = capture_faces(preview_placeholder, num_images=50, delay=0.1)
             st.session_state.capturing = False
 
             if faces:
@@ -188,13 +197,11 @@ def register_user():
             else:
                 st.error("No faces captured. Please try again and ensure your face is visible.")
 
-            release_camera(cap)
             st.session_state.camera_active = False
             st.session_state.capturing = False
             st.rerun()
 
         if st.button("Stop Camera"):
-            release_camera(cap)
             st.session_state.camera_active = False
             st.session_state.capturing = False
             st.rerun()
