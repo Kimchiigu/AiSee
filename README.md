@@ -1,3 +1,4 @@
+
 # AiSee 🎓🤖
 
 <p align="center">
@@ -22,7 +23,7 @@ AiSee is an intelligent school attendance system powered by **AI Computer Vision
 2. [Features](#features)
 3. [Technology Stack](#technology-stack)
 4. [Prerequisites](#prerequisites)
-5. [How to Run Locally](#how-to-run-locally)
+5. [How to Run the Full System (AI + IoT)](#how-to-run-the-full-system-ai--iot)
 6. [Firebase & Cloudinary Setup](#firebase--cloudinary-setup)
 7. [Contact](#contact)
 
@@ -39,6 +40,7 @@ AiSee is an intelligent school attendance system powered by **AI Computer Vision
   - Object detection for cheating activity
   - Firebase integration for user data
   - Cloudinary for storing face image datasets
+  - IoT camera integration for real-time exam surveillance
 
 ---
 
@@ -48,6 +50,7 @@ AiSee is an intelligent school attendance system powered by **AI Computer Vision
 - ✅ **Verify Face**: Authenticate users through facial recognition for secure attendance logging.
 - 📊 **Attendance Monitoring**: Track and manage attendance records with continuous verification.
 - 🕵️‍♂️ **Exam Supervisor**: Detect cheating behaviors using YOLO for object detection and HaarCascade for face detection within defined boundary zones.
+- 🌐 **IoT Camera**: Upload images to Google Drive and send the link to the backend for cheating verification.
 
 ---
 
@@ -60,6 +63,8 @@ AiSee is an intelligent school attendance system powered by **AI Computer Vision
 - **OpenCV** — Face detection and cheating detection
 - **Firebase** — Cloud database for user metadata
 - **Cloudinary** — Cloud image storage
+- **Flask** — Backend server for IoT camera to upload data
+- **Arduino** — IoT firmware for image capture and HTTP POST
 
 ### 🧠 Computer Vision
 
@@ -85,7 +90,7 @@ pip install -r requirements.txt
 
 ---
 
-## 🚀 How to Run Locally
+## 🚀 How to Run the Full System (AI + IoT)
 
 ### 1. Clone the Repository
 
@@ -94,9 +99,9 @@ git clone https://github.com/Kimchiigu/AiSee.git
 cd aisee
 ```
 
-### 2. Setup `secrets.toml` File
+### 2. Setup `secrets.toml`
 
-Create a `.streamlit/secrets.toml` file in the `.streamlit/` directory with the following content:
+Create a `.streamlit/secrets.toml` file and paste your credentials:
 
 ```toml
 # Firebase configuration
@@ -128,13 +133,41 @@ client_x509_cert_url = "your_client_x509_cert_url"
 universe_domain = "googleapis.com"
 ```
 
-Replace the placeholder values with your actual Firebase and Cloudinary credentials.
-
-### 3. Run the Streamlit App
+### 3. Run the Streamlit Web App
 
 ```bash
 streamlit run main.py
 ```
+
+### 4. Run the Flask Server for IoT
+
+In a separate terminal, run the Flask backend server to receive images from the IoT camera:
+
+```bash
+python flask-server.py
+```
+
+Make sure the endpoint in your `.ino` code matches this server IP.
+
+### 5. Upload IoT Code to Microcontroller
+
+- Open `iot_camera_uploader.ino` in Arduino IDE
+- Plug in the ESP32-CAM or similar board
+- Select the correct COM port
+- Upload the sketch
+
+You may need to install ESP32 board support via Arduino Board Manager.
+
+### 6. Connect to Wi-Fi and Test
+
+Once the IoT camera boots:
+
+- It connects to Wi-Fi
+- Takes snapshots at intervals
+- Sends POST requests to your Flask server
+- Flask server saves the image in uploaded_images
+
+Done! 🎉
 
 ---
 
