@@ -9,5 +9,6 @@ pandas==2.2.3
 plotly==5.24.1
 Pillow==10.4.0
 requests==2.32.3
-opencv-contrib-python==4.9.0.80
+opencv-contrib-python==4.10.0.84
+opencv-python==4.10.0.84
 deepface==0.0.93
