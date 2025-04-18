@@ -1,5 +1,5 @@
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoTransformerBase
 import cv2
 import numpy as np
 import os
@@ -9,6 +9,25 @@ from ultralytics import YOLO
 from datetime import datetime
 from io import StringIO
 import av
+import queue
+import threading
+import time
+
+global_seats = {}
+seats_lock = threading.Lock()
+seat_updates_queue = queue.Queue()
+
+class SnapshotTransformer(VideoTransformerBase):
+    def __init__(self):
+        self.frame_queue = queue.Queue(maxsize=1)
+    
+    def transform(self, frame):
+        img = frame.to_ndarray(format="bgr24")
+        try:
+            self.frame_queue.put(img, timeout=1)
+        except queue.Full:
+            pass
+        return img
 
 @st.cache_resource
 def load_model():
@@ -26,11 +45,9 @@ def draw_seats(frame, seats):
         cv2.rectangle(frame_copy, (sx, sy), (sx + sw, sy + sh), color, 2)
         cv2.putText(frame_copy, label, (sx, sy - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
         if st.session_state.get("monitoring", False):
-            if seat_data.get("occupied", False) and seat_data.get("start_time") is not None:
-                current_duration = time.time() - seat_data["start_time"]
-                total_duration = seat_data.get("accumulated_time", 0.0) + current_duration
-            else:
-                total_duration = seat_data.get("accumulated_time", 0.0)
+            total_duration = seat_data.get("accumulated_time", 0.0)
+            if seat_data.get("occupied", False) and seat_data.get("start_time"):
+                total_duration += time.time() - seat_data["start_time"]
             mm = int(total_duration // 60)
             ss = int(total_duration % 60)
             duration_text = f"{mm}:{ss:02d}"
@@ -39,10 +56,89 @@ def draw_seats(frame, seats):
 
 def is_person_in_seat(person_box, seat_region):
     px, py, pw, ph = person_box
-    cx = px + pw / 2.0
-    cy = py + ph / 2.0
+    cx = px + pw / 2
+    cy = py + ph / 2
     sx, sy, sw, sh = seat_region
     return (sx <= cx <= sx + sw) and (sy <= cy <= sy + sh)
+
+def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
+    model = load_model()
+    with seats_lock:
+        seats = global_seats.copy()  # Get a fresh copy of the seat states
+    
+    img = frame.to_ndarray(format="bgr24")
+    rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    
+    # Process person detection with YOLO
+    results = model.predict(rgb_img, conf=0.3)
+    person_detections = []
+    if len(results) > 0:
+        boxes = results[0].boxes
+        for box in boxes:
+            if int(box.cls[0]) == 0:  # Person class
+                x_min, y_min, x_max, y_max = box.xyxy[0].cpu().numpy()
+                person_detections.append((x_min, y_min, x_max - x_min, y_max - y_min))
+    
+    # Update seat occupancy and timers based on current frame's detections
+    for label, seat_data in seats.items():
+        seat_region = seat_data["region"]
+        occupied = any(is_person_in_seat(person_box, seat_region) for person_box in person_detections)
+        
+        # Update occupancy status and timers
+        if occupied != seat_data["occupied"]:
+            if occupied:  # Seat becomes occupied
+                seat_data["start_time"] = time.time()
+            else:  # Seat becomes unoccupied
+                if seat_data["start_time"]:
+                    elapsed = time.time() - seat_data["start_time"]
+                    seat_data["accumulated_time"] += elapsed
+                    seat_data["start_time"] = None
+            seat_data["occupied"] = occupied
+    
+    # Draw seats with updated occupancy and timers
+    frame_with_seats = draw_seats(rgb_img, seats)
+    
+    # Draw person detections for visual confirmation
+    for (x, y, w, h) in person_detections:
+        cv2.rectangle(frame_with_seats, (int(x), int(y)), (int(x + w), int(y + h)), (0, 0, 255), 2)
+        cv2.putText(frame_with_seats, "Person", (int(x), int(y) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+    
+    # Put updates into queue for session state synchronization
+    seat_updates = {label: {"occupied": seat_data["occupied"], "start_time": seat_data["start_time"], "accumulated_time": seat_data["accumulated_time"]} for label, seat_data in seats.items()}
+    seat_updates_queue.put(seat_updates)
+    
+    return av.VideoFrame.from_ndarray(cv2.cvtColor(frame_with_seats, cv2.COLOR_RGB2BGR), format="bgr24")
+
+def process_seat_updates():
+    try:
+        while True:
+            seat_updates = seat_updates_queue.get_nowait()
+            for label, occupied in seat_updates.items():
+                if label in st.session_state.seats:
+                    seat_data = st.session_state.seats[label]
+                    
+                    # Update the seat state
+                    if occupied:
+                        if not seat_data["occupied"]:  # New occupation
+                            seat_data["occupied"] = True
+                            seat_data["start_time"] = time.time()
+                    else:
+                        if seat_data["occupied"]:  # Occupation ended
+                            elapsed = time.time() - seat_data["start_time"]
+                            seat_data["accumulated_time"] += elapsed
+                            seat_data["occupied"] = False
+                            seat_data["start_time"] = None
+                    
+                    # Synchronize with global seats
+                    with seats_lock:
+                        if label in global_seats:
+                            global_seats[label].update({
+                                "occupied": seat_data["occupied"],
+                                "start_time": seat_data["start_time"],
+                                "accumulated_time": seat_data["accumulated_time"]
+                            })
+    except queue.Empty:
+        pass
 
 def download_csv(seats):
     output = StringIO()
@@ -57,92 +153,20 @@ def download_csv(seats):
     output.close()
     return csv_data.encode('utf-8')
 
-class SeatMonitoringTransformer(VideoTransformerBase):
-    def __init__(self):
-        self.model = load_model()
-        self.frame_count = 0
-        self.last_frame = None
-        self.last_processed_frame = None
-        self.person_count = 0  # Track number of detected persons
-
-    def transform(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-        rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        self.last_frame = rgb_img
-
-        # Always draw seats on the frame
-        seats = st.session_state.get("seats", {})
-        frame_with_seats = draw_seats(rgb_img, seats)
-
-        # Process every 5th frame to reduce CPU load, unless monitoring
-        self.frame_count += 1
-        if self.frame_count % 5 != 0 and not st.session_state.get("monitoring", False):
-            return cv2.cvtColor(frame_with_seats, cv2.COLOR_RGB2BGR)
-
-        # Run person detection in monitoring mode
-        if st.session_state.get("monitoring", False):
-            results = self.model(rgb_img, conf=0.3)  # Lowered confidence for better detection
-            person_detections = []
-
-            if len(results) > 0:
-                boxes = results[0].boxes
-                for box in boxes:
-                    cls = int(box.cls[0])
-                    conf = float(box.conf[0])
-                    xyxy = box.xyxy[0].cpu().numpy()
-                    x_min, y_min, x_max, y_max = xyxy
-                    w = x_max - x_min
-                    h = y_max - y_min
-                    if cls == 0:  # Person class
-                        person_detections.append({
-                            "box": (int(x_min), int(y_min), int(w), int(h)),
-                            "conf": conf
-                        })
-
-            self.person_count = len(person_detections)  # Update person count
-
-            # Update seat occupancy
-            for seat_label, seat_data in seats.items():
-                seat_region = seat_data["region"]
-                seat_occupied_now = False
-                for det in person_detections:
-                    if is_person_in_seat(det["box"], seat_region):
-                        seat_occupied_now = True
-                        break
-
-                if seat_occupied_now and not seat_data["occupied"]:
-                    seat_data["occupied"] = True
-                    seat_data["start_time"] = time.time()
-                elif not seat_occupied_now and seat_data["occupied"]:
-                    elapsed = time.time() - seat_data["start_time"]
-                    seat_data["accumulated_time"] = seat_data.get("accumulated_time", 0.0) + elapsed
-                    seat_data["start_time"] = None
-                    seat_data["occupied"] = False
-
-            # Draw all elements on the frame
-            final_frame = frame_with_seats.copy()
-
-            # Draw person detections
-            for det in person_detections:
-                x_min, y_min, w_box, h_box = det["box"]
-                x_max = x_min + w_box
-                y_max = y_min + h_box
-                cv2.rectangle(final_frame, (int(x_min), int(y_min)), (int(x_max), int(y_max)),
-                             (0, 0, 255), 2)
-                label = f"person [{det['conf']:.2f}]"
-                cv2.putText(final_frame, label, (int(x_min), int(y_min) - 5),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-
-            self.last_processed_frame = final_frame
-            return cv2.cvtColor(final_frame, cv2.COLOR_RGB2BGR)
-
-        return cv2.cvtColor(frame_with_seats, cv2.COLOR_RGB2BGR)
+def capture_snapshot_callback(frame: av.VideoFrame) -> av.VideoFrame:
+    img = frame.to_ndarray(format="bgr24")
+    if not hasattr(st.session_state, "snapshot_frame"):
+        st.session_state.snapshot_frame = None
+    st.session_state.snapshot_frame = img.copy()
+    return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 def monitor_attendance():
+    global global_seats
     st.title("Seat Occupancy Monitoring")
     st.write("Configure seat regions and monitor student presence.")
-    st.info("When start camera, click the play button to avoid connection error")
+    st.info("When starting camera, click the play button and wait for video feed before capturing snapshot")
 
+    # Initialize session state
     if "seats" not in st.session_state:
         st.session_state.seats = {}
     if "snapshot" not in st.session_state:
@@ -150,26 +174,40 @@ def monitor_attendance():
     if "monitoring" not in st.session_state:
         st.session_state.monitoring = False
 
+    with seats_lock:
+        global_seats = st.session_state.seats.copy()
+
+    # Step 1: Capture Snapshot
     if st.session_state.snapshot is None:
         st.subheader("Step 1: Capture Snapshot")
         
         ctx = webrtc_streamer(
             key="snapshot-capture",
-            video_transformer_factory=SeatMonitoringTransformer,
-            async_transform=True,
+            video_transformer_factory=SnapshotTransformer,
             mode=WebRtcMode.SENDRECV,
-            media_stream_constraints={"video": {"width": {"ideal": 640}, "height": {"ideal": 480}}, "audio": False},
-            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+            media_stream_constraints={
+                "video": {"width": 640, "height": 480},
+                "audio": False
+            },
+            async_processing=True,
         )
 
         if st.button("Capture Snapshot"):
-            if ctx.video_transformer and ctx.video_transformer.last_frame is not None:
-                st.session_state.snapshot = ctx.video_transformer.last_frame
-                st.success("Snapshot captured! Proceed to configure seats.")
-                st.rerun()
+            if ctx.video_transformer:
+                try:
+                    latest_frame = ctx.video_transformer.frame_queue.get(timeout=5)
+                    st.session_state.snapshot = cv2.cvtColor(latest_frame, cv2.COLOR_BGR2RGB)
+                    st.success("Snapshot captured! Proceed to configure seats.")
+                    st.rerun()
+                except queue.Empty:
+                    st.error("No frames received from camera. Please:")
+                    st.markdown("1. Ensure camera permissions are granted")
+                    st.markdown("2. Check camera connection")
+                    st.markdown("3. Wait for video feed to appear before capturing")
             else:
-                st.error("No frame available to capture. Please ensure the camera is working.")
+                st.error("Camera not initialized. Please click the 'Start Camera' button first.")
 
+    # Step 2: Configure Seat Regions
     elif not st.session_state.monitoring:
         st.subheader("Step 2: Configure Seat Regions")
         
@@ -229,8 +267,10 @@ def monitor_attendance():
         else:
             st.warning("Please add at least one seat before starting monitoring.")
 
+    # Step 3: Monitoring
     else:
         st.subheader("Step 3: Monitoring Seats")
+        process_seat_updates()  # Process any queued seat updates
         
         # Display current seat configuration
         st.write("Current Seat Configuration:")
@@ -238,18 +278,13 @@ def monitor_attendance():
             x, y, w, h = seat_data["region"]
             st.write(f"Seat {label}: (x={x}, y={y}, width={w}, height={h})")
             
-        ctx = webrtc_streamer(
+        webrtc_ctx = webrtc_streamer(
             key="seat-monitoring",
-            video_transformer_factory=SeatMonitoringTransformer,
-            async_transform=True,
+            video_frame_callback=video_frame_callback,
             mode=WebRtcMode.SENDRECV,
-            media_stream_constraints={"video": {"width": {"ideal": 640}, "height": {"ideal": 480}}, "audio": False},
-            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+            media_stream_constraints={"video": {"width": 640, "height": 480}, "audio": False},
+            async_processing=True,
         )
-
-        # Display debugging info
-        if ctx.video_transformer:
-            st.write(f"Number of Persons Detected: {ctx.video_transformer.person_count}")
 
         # Show current seat status
         if st.session_state.seats:
@@ -257,7 +292,7 @@ def monitor_attendance():
             for label, seat_data in st.session_state.seats.items():
                 status = "Occupied" if seat_data.get("occupied", False) else "Empty"
                 total_time = seat_data.get("accumulated_time", 0.0)
-                if seat_data.get("occupied", False) and seat_data.get("start_time") is not None:
+                if seat_data.get("occupied", False) and seat_data.get("start_time"):
                     total_time += time.time() - seat_data["start_time"]
                 mm = int(total_time // 60)
                 ss = int(total_time % 60)
@@ -270,8 +305,7 @@ def monitor_attendance():
                 st.rerun()
         
         with col2:
-            reset_button = st.button("Reset All Timers")
-            if reset_button:
+            if st.button("Reset All Timers"):
                 for seat_data in st.session_state.seats.values():
                     seat_data["accumulated_time"] = 0.0
                     seat_data["start_time"] = None
