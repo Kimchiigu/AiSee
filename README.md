@@ -39,6 +39,7 @@ AiSee is an intelligent school attendance system powered by **AI Computer Vision
   - Object detection for cheating activity
   - Firebase integration for user data
   - Cloudinary for storing face image datasets
+  - This branch uses a webcam for simpler web deployment and usage. For the IoT-integrated version, please switch to the IoT-Final-Version branch or click on the submodule.
 
 ---
 
