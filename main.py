@@ -94,7 +94,7 @@ if 'page' not in st.session_state:
 def render_sidebar():
     st.sidebar.markdown("# 👁️ AIsee")
     st.sidebar.markdown("**Intelligent Student Monitoring System**")
-    st.sidebar.markdown("**LOGIN WITH admin:admin1234**")
+    st.sidebar.markdown("**Login With admin:admin1234**")
     st.sidebar.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
     
     if st.session_state.logged_in:
