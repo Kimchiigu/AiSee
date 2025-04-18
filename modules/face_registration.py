@@ -99,6 +99,7 @@ def upload_to_cloudinary(image_np, name, idx):
 
 def register_user():
     st.subheader("Register New Face")
+    st.info("When start camera, click the play button to avoid connection error")
     
     name = st.text_input("Name")
     email = st.text_input("Email")

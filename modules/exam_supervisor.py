@@ -59,6 +59,7 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
 def render():
     st.title("Real-Time Exam Cheating Detection")
     st.write("This app uses a fine-tuned YOLOv9 model to detect 'Cheating', 'Mobile', or 'Normal' behaviors in real-time via webcam.")
+    st.info("When start camera, click the play button to avoid connection error")
 
     webrtc_ctx = webrtc_streamer(
         key="exam-cheating-detection",

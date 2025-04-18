@@ -141,6 +141,7 @@ class SeatMonitoringTransformer(VideoTransformerBase):
 def monitor_attendance():
     st.title("Seat Occupancy Monitoring")
     st.write("Configure seat regions and monitor student presence.")
+    st.info("When start camera, click the play button to avoid connection error")
 
     if "seats" not in st.session_state:
         st.session_state.seats = {}

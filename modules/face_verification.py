@@ -161,6 +161,7 @@ class FaceVerificationTransformer(VideoTransformerBase):
 ### Main Function ###
 def verify_user():
     st.subheader("Verify Face")
+    st.info("When start camera, click the play button to avoid connection error")
     name = st.text_input("Name")
     subject = st.text_input("Subject")
     session = st.number_input("Session", min_value=1, value=1)
