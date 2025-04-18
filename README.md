@@ -1,3 +1,17 @@
+# IMPORTANT NOTES
+
+> Change the branch to "IoT-Final-Version to see the code with IoT Integration
+
+> The main branch contains the code that is suitable for website which uses webrtc
+
+### Here's how to switch branch
+
+<p align="">
+  <img alt="AiSee Logo" title="AiSee" src="assets/branch.png" width="200">
+</p>
+
+---
+
 # AiSee 🎓🤖
 
 <p align="center">
