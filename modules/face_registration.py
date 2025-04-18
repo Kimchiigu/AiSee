@@ -1,16 +1,15 @@
 import streamlit as st
 import cv2
 import numpy as np
-import os
-from PIL import Image
 import base64
 import firebase_admin
 from firebase_admin import credentials, firestore, initialize_app
 import cloudinary
 import cloudinary.uploader
 import time
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from streamlit_webrtc import WebRtcMode, webrtc_streamer, VideoProcessorBase
+import av
+from collections import deque
 
 if not firebase_admin._apps:
     cred = credentials.Certificate(st.secrets["FIREBASE_SERVICE_ACCOUNT"].to_dict())
@@ -24,89 +23,83 @@ cloudinary.config(
     secure=True
 )
 
-face_cascade = cv2.CascadeClassifier('model/absensi/haarcascade_frontalface_default.xml')
+face_cascade = cv2.CascadeClassifier(
+    cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+)
 
-### Helper Functions ###
-def get_camera_indices():
-    """Detect available camera indices."""
-    camera_indices = [] 
-    for i in range(50):
-        cap = cv2.VideoCapture(i)
-        if cap.isOpened():
-            camera_indices.append(i)
-            cap.release()
-    return camera_indices
-
-def get_camera():
-    """Open the first available camera."""
-    camera_indices = get_camera_indices()
-    if not camera_indices:
-        st.error("No camera available.")
-        return None
-    return cv2.VideoCapture(camera_indices[0])
-
-def release_camera(cap):
-    """Release the camera resource."""
-    if cap is not None and cap.isOpened():
-        cap.release()
-
-def capture_frame(cap):
-    """Capture a single frame from the camera."""
-    ret, frame = cap.read()
-    if not ret:
-        return None
-    return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-def detect_and_draw_faces(frame):
-    """Detect faces and draw rectangles on the frame."""
-    gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5)
-    for (x, y, w, h) in faces:
-        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-    return frame, faces
-
-def simulate_live_feed(placeholder, cap):
-    """Display a single frame for live feed."""
-    frame = capture_frame(cap)
-    if frame is None:
-        return
-    frame, _ = detect_and_draw_faces(frame)
-    placeholder.image(frame, channels="RGB", use_container_width=True)
-
-def capture_faces(cap, placeholder, num_images=50, delay=0.1):
-    """Capture multiple face images with a delay, showing live feed."""
-    captured_faces = []
-    for _ in range(num_images):
-        frame = capture_frame(cap)
-        if frame is None:
-            continue
-        frame_with_faces, faces = detect_and_draw_faces(frame)
-        placeholder.image(frame_with_faces, channels="RGB", use_container_width=True)
-        if len(faces) > 0:
-            x, y, w, h = faces[0]
-            face_rgb = frame[y:y+h, x:x+w]
-            face_gray = cv2.cvtColor(face_rgb, cv2.COLOR_RGB2GRAY)
-            captured_faces.append(face_gray)
-        time.sleep(delay)
-    return captured_faces
+class FaceCaptureProcessor(VideoProcessorBase):
+    def __init__(self, name):
+        self.detected_faces = deque(maxlen=50)
+        self.uploaded_urls = []
+        self.last_capture_time = 0
+        self.capture_interval = 0.1
+        self.capturing = False
+        self.capture_complete = False
+        self.last_detected_count = 0
+        self.name = name
+    
+    def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
+        img = frame.to_ndarray(format="bgr24")
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        faces = face_cascade.detectMultiScale(
+            gray, 
+            scaleFactor=1.05, 
+            minNeighbors=5, 
+            minSize=(50, 50), 
+            flags=cv2.CASCADE_SCALE_IMAGE
+        )
+        
+        print(f"Detected faces: {len(faces)}, Coordinates: {faces}")
+        self.last_detected_count = len(faces)
+        
+        current_time = time.time()
+        
+        if self.capturing and not self.capture_complete and len(faces) > 0:
+            (x, y, w, h) = faces[0]
+            if (len(self.detected_faces) < 50 and 
+                current_time - self.last_capture_time >= self.capture_interval):
+                print(f"Capturing face #{len(self.detected_faces) + 1}")
+                face_img = gray[y:y+h, x:x+w]
+                if face_img.size > 0:
+                    self.detected_faces.append(face_img)
+                    self.last_capture_time = current_time
+                    try:
+                        url = upload_to_cloudinary(face_img, self.name, len(self.detected_faces) - 1)
+                        self.uploaded_urls.append(url)
+                        print(f"Uploaded face #{len(self.uploaded_urls)} to Cloudinary: {url}")
+                    except Exception as e:
+                        print(f"Cloudinary upload failed: {str(e)}")
+                if len(self.detected_faces) >= 50:
+                    print("50 faces captured and uploaded, stopping")
+                    self.capture_complete = True
+                    self.capturing = False
+        
+        for (x, y, w, h) in faces:
+            cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 def upload_to_cloudinary(image_np, name, idx):
-    """Upload a grayscale image to Cloudinary and return its URL."""
-    if len(image_np.shape) == 3:
-        image_np = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
-    image_np_3ch = cv2.cvtColor(image_np, cv2.COLOR_GRAY2RGB)
-    _, buffer = cv2.imencode('.jpg', image_np_3ch)
-    b64_img = base64.b64encode(buffer).decode()
-    upload_result = cloudinary.uploader.upload(
-        "data:image/jpeg;base64," + b64_img,
-        folder=f"AiSee/{name}",
-        public_id=f"{name}_{idx}"
-    )
-    return upload_result['secure_url']
+    try:
+        if len(image_np.shape) == 3:
+            image_np = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
+        image_np_3ch = cv2.cvtColor(image_np, cv2.COLOR_GRAY2RGB)
+        _, buffer = cv2.imencode('.jpg', image_np_3ch)
+        b64_img = base64.b64encode(buffer).decode()
+        upload_result = cloudinary.uploader.upload(
+            "data:image/jpeg;base64," + b64_img,
+            folder=f"AiSee/{name}",
+            public_id=f"{name}_{idx}"
+        )
+        return upload_result['secure_url']
+    except Exception as e:
+        st.error(f"Cloudinary upload failed for image {idx}: {str(e)}")
+        raise
 
-### Main Function ###
 def register_user():
     st.subheader("Register New Face")
+    
     name = st.text_input("Name")
     email = st.text_input("Email")
     role = st.selectbox("Role", ["Student", "Teacher", "Admin"])
@@ -114,93 +107,92 @@ def register_user():
     if role not in ("Teacher", "Admin"):
         kelas = st.text_input("Class")
         type = st.selectbox("Type", ["School", "University"])
-        
         if type == "School":
             grade = st.number_input("Grade", min_value=1, max_value=12)
         elif type == "University":
             semester = st.number_input("Semester", min_value=1, max_value=15)
 
-    if "camera_active" not in st.session_state:
-        st.session_state.camera_active = False
-    if "capturing" not in st.session_state:
-        st.session_state.capturing = False
+    if "registration_complete" not in st.session_state:
+        st.session_state.registration_complete = False
+    if "capture_started" not in st.session_state:
+        st.session_state.capture_started = False
+    if "processing" not in st.session_state:
+        st.session_state.processing = False
+    if "face_processor" not in st.session_state:
+        st.session_state.face_processor = None
 
-    preview_placeholder = st.empty()
-    cap = None
+    st.write("Please position your face in the center of the camera frame with good lighting.")
 
-    if not st.session_state.camera_active:
-        if st.button("Start Camera"):
-            st.session_state.camera_active = True
+    if not st.session_state.capture_started and not st.session_state.registration_complete:
+        if st.button("Start Capture Face"):
+            st.session_state.capture_started = True
+            st.session_state.processing = False
             st.rerun()
 
-    if st.session_state.camera_active:
-        st.info("Camera is on. Adjust your position and click 'Capture Face' when ready.")
-        
-        cap = get_camera()
-        if cap is None:
-            return
+    if st.session_state.capture_started:
+        ctx = webrtc_streamer(
+            key="face-registration",
+            mode=WebRtcMode.SENDRECV,
+            video_processor_factory=lambda: FaceCaptureProcessor(name),
+            media_stream_constraints={"video": True, "audio": False},
+            async_processing=True,
+            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+        )
 
-        if not st.session_state.capturing:
-            simulate_live_feed(preview_placeholder, cap)
+        if ctx.video_processor:
+            st.session_state.face_processor = ctx.video_processor
+            st.session_state.face_processor.capturing = True
 
-        capture_button = st.button("Capture Face")
-        if capture_button:
-            st.session_state.capturing = True
-            st.info("Capturing 50 images... please hold still for 5 seconds.")
-            faces = capture_faces(cap, preview_placeholder, num_images=50, delay=0.1)
-            st.session_state.capturing = False
+            debug_placeholder = st.empty()
+            progress_placeholder = st.empty()
 
-            if faces:
-                urls = []
-                for idx, face in enumerate(faces):
-                    url = upload_to_cloudinary(face, name, idx)
-                    urls.append(url)
+            if st.session_state.face_processor:
+                capture_count = len(st.session_state.face_processor.detected_faces)
+                upload_count = len(st.session_state.face_processor.uploaded_urls)
+                debug_placeholder.write(f"Detected faces in last frame: {st.session_state.face_processor.last_detected_count}")
+                progress_placeholder.progress(min(capture_count / 50, 1.0), text=f"Capturing: {capture_count}/50 faces, Uploaded: {upload_count}/50")
+                
+                if not st.session_state.face_processor.capture_complete:
+                    time.sleep(0.1) 
+                    st.rerun()
 
-                if role in ("Teacher", "Admin"):
-                    db.collection("users").add({
-                        "name": name,
-                        "email": email,
-                        "images": urls,
-                        "role": role.lower()
-                    })
-                else:
+            if st.button("Stop Capture"):
+                st.session_state.capture_started = False
+                st.session_state.face_processor.capturing = False
+                st.rerun()
+
+    if (st.session_state.face_processor and 
+        st.session_state.face_processor.capture_complete and 
+        len(st.session_state.face_processor.uploaded_urls) >= 50 and 
+        not st.session_state.registration_complete and 
+        not st.session_state.processing):
+        st.session_state.processing = True
+        try:
+            with st.spinner("Saving to Firebase..."):
+                user_data = {
+                    "name": name,
+                    "email": email,
+                    "images": st.session_state.face_processor.uploaded_urls,
+                    "role": role.lower()
+                }
+                if role not in ("Teacher", "Admin"):
+                    user_data["class"] = kelas
+                    user_data["type"] = type.lower()
                     if type == "School":
-                        db.collection("users").add({
-                            "name": name,
-                            "email": email,
-                            "images": urls,
-                            "class": kelas,
-                            "role": role.lower(),
-                            "type": type.lower(),
-                            "grade": grade
-                        })
+                        user_data["grade"] = grade
                     elif type == "University":
-                        db.collection("users").add({
-                            "name": name,
-                            "email": email,
-                            "images": urls,
-                            "class": kelas,
-                            "role": role.lower(),
-                            "type": type.lower(),
-                            "semester": semester
-                        })
-                st.success(f"{len(urls)} face images uploaded and user registered!")
-            else:
-                st.error("No faces captured. Please try again and ensure your face is visible.")
+                        user_data["semester"] = semester
+                db.collection("users").add(user_data)
+                print("User data saved to Firebase")
 
-            release_camera(cap)
-            st.session_state.camera_active = False
-            st.session_state.capturing = False
-            st.rerun()
-
-        if st.button("Stop Camera"):
-            release_camera(cap)
-            st.session_state.camera_active = False
-            st.session_state.capturing = False
-            st.rerun()
-
-        if cap is not None:
-            simulate_live_feed(preview_placeholder, cap)
+            st.session_state.registration_complete = True
+            st.session_state.processing = False
+            st.session_state.capture_started = False
+            st.success("Registration complete! User successfully created with 50 face images.")
+            st.balloons()
+        except Exception as e:
+            st.error(f"Firebase save failed: {str(e)}")
+            st.session_state.processing = False
 
 def render():
     st.title("Face Registration")

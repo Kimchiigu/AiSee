@@ -1,8 +1,23 @@
-import streamlit as st
+import logging
+import queue
+from pathlib import Path
+from typing import List, NamedTuple
+
+import av
 import cv2
 import numpy as np
+import streamlit as st
 from ultralytics import YOLO
 import os
+from streamlit_webrtc import WebRtcMode, webrtc_streamer
+
+logger = logging.getLogger(__name__)
+
+class Detection(NamedTuple):
+    class_id: int
+    label: str
+    score: float
+    box: np.ndarray
 
 @st.cache_resource
 def load_model():
@@ -12,55 +27,60 @@ def load_model():
         st.stop()
     return YOLO(model_path)
 
-def render():
-    model = load_model()
+result_queue: "queue.Queue[List[Detection]]" = queue.Queue()
 
+def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
+    model = load_model()
+    image = frame.to_ndarray(format="bgr24")
+    
+    results = model.predict(image, conf=0.5)
+    annotated_frame = results[0].plot()
+    
+    detections = []
+    for result in results[0].boxes:
+        class_id = int(result.cls)
+        label = model.names[class_id]
+        score = float(result.conf)
+        box = result.xyxy[0].cpu().numpy()
+        
+        detections.append(
+            Detection(
+                class_id=class_id,
+                label=label,
+                score=score,
+                box=box,
+            )
+        )
+    
+    result_queue.put(detections)
+    
+    return av.VideoFrame.from_ndarray(annotated_frame, format="bgr24")
+
+def render():
     st.title("Real-Time Exam Cheating Detection")
     st.write("This app uses a fine-tuned YOLOv9 model to detect 'Cheating', 'Mobile', or 'Normal' behaviors in real-time via webcam.")
 
-    frame_placeholder = st.empty()
+    webrtc_ctx = webrtc_streamer(
+        key="exam-cheating-detection",
+        mode=WebRtcMode.SENDRECV,
+        video_frame_callback=video_frame_callback,
+        media_stream_constraints={"video": True, "audio": False},
+        async_processing=True,
+    )
 
-    if 'run' not in st.session_state:
-        st.session_state.run = False
-
-    start_button = st.button("Start Webcam")
-    stop_button = st.button("Stop Webcam")
-
-    if start_button:
-        st.session_state.run = True
-    if stop_button:
-        st.session_state.run = False
-
-    cap = cv2.VideoCapture(0)
-
-    if not cap.isOpened():
-        st.error("Error: Could not open webcam. Ensure your webcam is connected and accessible.")
-        st.stop()
-
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-
-    while st.session_state.run:
-        ret, frame = cap.read()
-        if not ret:
-            st.error("Error: Could not read frame from webcam.")
-            break
-
-        results = model.predict(frame, conf=0.5)
-        annotated_frame = results[0].plot()
-        annotated_frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-        frame_placeholder.image(annotated_frame_rgb, caption="Live Detection", use_container_width=True)
-
-        for result in results[0].boxes:
-            class_id = int(result.cls)
-            class_name = model.names[class_id]
-            confidence = float(result.conf)
-            if "cheating" in class_name.lower():
-                st.warning(f"Cheating Detected! Confidence: {confidence:.2f}")
-            elif "mobile" in class_name.lower():
-                st.warning(f"Mobile Device Detected! Confidence: {confidence:.2f}")
-            elif "normal" in class_name.lower():
-                st.success(f"Normal Behavior Detected! Confidence: {confidence:.2f}")
-
-    cap.release()
-    st.write("Webcam stopped.")
+    if st.checkbox("Show detection alerts", value=True):
+        if webrtc_ctx.state.playing:
+            alerts_placeholder = st.empty()
+            
+            while True:
+                try:
+                    detections = result_queue.get()
+                    for detection in detections:
+                        if "cheating" in detection.label.lower():
+                            alerts_placeholder.warning(f"Cheating Detected! {detection.label} (Confidence: {detection.score:.2f})")
+                        elif "mobile" in detection.label.lower():
+                            alerts_placeholder.warning(f"Mobile Device Detected! {detection.label} (Confidence: {detection.score:.2f})")
+                        elif "normal" in detection.label.lower():
+                            alerts_placeholder.success(f"Normal Behavior Detected! {detection.label} (Confidence: {detection.score:.2f})")
+                except queue.Empty:
+                    continue

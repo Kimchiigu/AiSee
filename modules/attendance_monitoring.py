@@ -1,4 +1,5 @@
 import streamlit as st
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
 import cv2
 import numpy as np
 import os
@@ -7,6 +8,7 @@ import csv
 from ultralytics import YOLO
 from datetime import datetime
 from io import StringIO
+import av
 
 @st.cache_resource
 def load_model():
@@ -15,27 +17,6 @@ def load_model():
         st.error(f"Model file not found at {model_path}.")
         st.stop()
     return YOLO(model_path)
-
-def open_camera():
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
-        st.error("Error: Could not open webcam. Ensure your webcam is connected.")
-        return None
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    return cap
-
-def read_frame(cap):
-    if cap is None or not cap.isOpened():
-        return False, None
-    ret, frame = cap.read()
-    if not ret:
-        return False, None
-    return True, cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-def release_camera(cap):
-    if cap is not None and cap.isOpened():
-        cap.release()
 
 def draw_seats(frame, seats):
     frame_copy = frame.copy()
@@ -76,11 +57,90 @@ def download_csv(seats):
     output.close()
     return csv_data.encode('utf-8')
 
+class SeatMonitoringTransformer(VideoTransformerBase):
+    def __init__(self):
+        self.model = load_model()
+        self.frame_count = 0
+        self.last_frame = None
+        self.last_processed_frame = None
+        self.person_count = 0  # Track number of detected persons
+
+    def transform(self, frame):
+        img = frame.to_ndarray(format="bgr24")
+        rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        self.last_frame = rgb_img
+
+        # Always draw seats on the frame
+        seats = st.session_state.get("seats", {})
+        frame_with_seats = draw_seats(rgb_img, seats)
+
+        # Process every 5th frame to reduce CPU load, unless monitoring
+        self.frame_count += 1
+        if self.frame_count % 5 != 0 and not st.session_state.get("monitoring", False):
+            return cv2.cvtColor(frame_with_seats, cv2.COLOR_RGB2BGR)
+
+        # Run person detection in monitoring mode
+        if st.session_state.get("monitoring", False):
+            results = self.model(rgb_img, conf=0.3)  # Lowered confidence for better detection
+            person_detections = []
+
+            if len(results) > 0:
+                boxes = results[0].boxes
+                for box in boxes:
+                    cls = int(box.cls[0])
+                    conf = float(box.conf[0])
+                    xyxy = box.xyxy[0].cpu().numpy()
+                    x_min, y_min, x_max, y_max = xyxy
+                    w = x_max - x_min
+                    h = y_max - y_min
+                    if cls == 0:  # Person class
+                        person_detections.append({
+                            "box": (int(x_min), int(y_min), int(w), int(h)),
+                            "conf": conf
+                        })
+
+            self.person_count = len(person_detections)  # Update person count
+
+            # Update seat occupancy
+            for seat_label, seat_data in seats.items():
+                seat_region = seat_data["region"]
+                seat_occupied_now = False
+                for det in person_detections:
+                    if is_person_in_seat(det["box"], seat_region):
+                        seat_occupied_now = True
+                        break
+
+                if seat_occupied_now and not seat_data["occupied"]:
+                    seat_data["occupied"] = True
+                    seat_data["start_time"] = time.time()
+                elif not seat_occupied_now and seat_data["occupied"]:
+                    elapsed = time.time() - seat_data["start_time"]
+                    seat_data["accumulated_time"] = seat_data.get("accumulated_time", 0.0) + elapsed
+                    seat_data["start_time"] = None
+                    seat_data["occupied"] = False
+
+            # Draw all elements on the frame
+            final_frame = frame_with_seats.copy()
+
+            # Draw person detections
+            for det in person_detections:
+                x_min, y_min, w_box, h_box = det["box"]
+                x_max = x_min + w_box
+                y_max = y_min + h_box
+                cv2.rectangle(final_frame, (int(x_min), int(y_min)), (int(x_max), int(y_max)),
+                             (0, 0, 255), 2)
+                label = f"person [{det['conf']:.2f}]"
+                cv2.putText(final_frame, label, (int(x_min), int(y_min) - 5),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+
+            self.last_processed_frame = final_frame
+            return cv2.cvtColor(final_frame, cv2.COLOR_RGB2BGR)
+
+        return cv2.cvtColor(frame_with_seats, cv2.COLOR_RGB2BGR)
+
 def monitor_attendance():
     st.title("Seat Occupancy Monitoring")
     st.write("Configure seat regions and monitor student presence.")
-
-    model = load_model()
 
     if "seats" not in st.session_state:
         st.session_state.seats = {}
@@ -88,63 +148,35 @@ def monitor_attendance():
         st.session_state.snapshot = None
     if "monitoring" not in st.session_state:
         st.session_state.monitoring = False
-    if "run" not in st.session_state:
-        st.session_state.run = False
 
     if st.session_state.snapshot is None:
         st.subheader("Step 1: Capture Snapshot")
-        frame_placeholder = st.empty()
+        
+        ctx = webrtc_streamer(
+            key="snapshot-capture",
+            video_transformer_factory=SeatMonitoringTransformer,
+            async_transform=True,
+            mode=WebRtcMode.SENDRECV,
+            media_stream_constraints={"video": {"width": {"ideal": 640}, "height": {"ideal": 480}}, "audio": False},
+            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+        )
 
-        start_button = st.button("Start Webcam")
-        stop_button = st.button("Stop Webcam")
-        capture_button = st.button("Capture Snapshot")
-
-        if start_button:
-            st.session_state.run = True
-
-        if stop_button:
-            st.session_state.run = False
-            frame_placeholder.empty()
-
-        if capture_button:
-            cap = open_camera()
-            if cap:
-                ret, frame = read_frame(cap)
-                if ret:
-                    st.session_state.snapshot = frame
-                    st.session_state.run = False
-                    release_camera(cap)
-                    st.success("Snapshot captured! Proceed to configure seats.")
-                    st.rerun()
-                release_camera(cap)
+        if st.button("Capture Snapshot"):
+            if ctx.video_transformer and ctx.video_transformer.last_frame is not None:
+                st.session_state.snapshot = ctx.video_transformer.last_frame
+                st.success("Snapshot captured! Proceed to configure seats.")
+                st.rerun()
             else:
-                st.error("Failed to capture snapshot.")
-
-        if st.session_state.run:
-            cap = open_camera()
-            if cap:
-                while st.session_state.run:
-                    ret, frame = read_frame(cap)
-                    if not ret:
-                        st.error("Error: Could not read frame from webcam.")
-                        break
-                    frame_placeholder.image(frame, channels="RGB", caption="Live Feed", use_container_width=True)
-                    time.sleep(0.05)
-                    if not st.session_state.run:
-                        break
-                release_camera(cap)
-            else:
-                st.session_state.run = False
+                st.error("No frame available to capture. Please ensure the camera is working.")
 
     elif not st.session_state.monitoring:
         st.subheader("Step 2: Configure Seat Regions")
-        snapshot_placeholder = st.empty()
         
         if st.session_state.snapshot is not None:
             height, width, _ = st.session_state.snapshot.shape
             st.write(f"Snapshot Size: {width}x{height} pixels")
             frame_with_seats = draw_seats(st.session_state.snapshot, st.session_state.seats)
-            snapshot_placeholder.image(frame_with_seats, channels="RGB", caption="Configure Seat Regions", use_container_width=True)
+            st.image(frame_with_seats, channels="RGB", caption="Configure Seat Regions", use_container_width=True)
 
         with st.form("seat_form"):
             st.write("Add or Update Seat")
@@ -192,118 +224,68 @@ def monitor_attendance():
         if st.session_state.seats:
             if st.button("Start Monitoring"):
                 st.session_state.monitoring = True
-                st.session_state.run = False
                 st.rerun()
         else:
             st.warning("Please add at least one seat before starting monitoring.")
 
     else:
         st.subheader("Step 3: Monitoring Seats")
-        frame_placeholder = st.empty()
+        
+        # Display current seat configuration
+        st.write("Current Seat Configuration:")
+        for label, seat_data in st.session_state.seats.items():
+            x, y, w, h = seat_data["region"]
+            st.write(f"Seat {label}: (x={x}, y={y}, width={w}, height={h})")
+            
+        ctx = webrtc_streamer(
+            key="seat-monitoring",
+            video_transformer_factory=SeatMonitoringTransformer,
+            async_transform=True,
+            mode=WebRtcMode.SENDRECV,
+            media_stream_constraints={"video": {"width": {"ideal": 640}, "height": {"ideal": 480}}, "audio": False},
+            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+        )
 
-        start_button = st.button("Start Webcam")
-        stop_button = st.button("Stop Webcam")
-        reset_button = st.button("Reset All Timers")
-        download_button = st.button("Download CSV")
+        # Display debugging info
+        if ctx.video_transformer:
+            st.write(f"Number of Persons Detected: {ctx.video_transformer.person_count}")
 
-        if start_button:
-            st.session_state.run = True
+        # Show current seat status
+        if st.session_state.seats:
+            st.write("### Current Seat Status")
+            for label, seat_data in st.session_state.seats.items():
+                status = "Occupied" if seat_data.get("occupied", False) else "Empty"
+                total_time = seat_data.get("accumulated_time", 0.0)
+                if seat_data.get("occupied", False) and seat_data.get("start_time") is not None:
+                    total_time += time.time() - seat_data["start_time"]
+                mm = int(total_time // 60)
+                ss = int(total_time % 60)
+                st.write(f"Seat {label}: {status} - Total time: {mm}:{ss:02d}")
 
-        if stop_button:
-            st.session_state.run = False
-            frame_placeholder.empty()
-
-        if reset_button:
-            for seat_data in st.session_state.seats.values():
-                seat_data["accumulated_time"] = 0.0
-                seat_data["start_time"] = None
-                seat_data["occupied"] = False
-            st.success("All timers reset.")
-            st.rerun()
-
-        if download_button:
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("Stop Monitoring"):
+                st.session_state.monitoring = False
+                st.rerun()
+        
+        with col2:
+            reset_button = st.button("Reset All Timers")
+            if reset_button:
+                for seat_data in st.session_state.seats.values():
+                    seat_data["accumulated_time"] = 0.0
+                    seat_data["start_time"] = None
+                    seat_data["occupied"] = False
+                st.success("All timers reset.")
+                st.rerun()
+        
+        with col3:
             csv_data = download_csv(st.session_state.seats)
             st.download_button(
-                label="Download Seat Data",
+                label="Download CSV",
                 data=csv_data,
                 file_name=f"seat_occupancy_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                 mime="text/csv"
             )
-
-        if st.session_state.run:
-            cap = open_camera()
-            if cap:
-                while st.session_state.run:
-                    ret, frame = read_frame(cap)
-                    if not ret:
-                        st.error("Error: Could not read frame from webcam.")
-                        break
-
-                    results = model(frame, conf=0.7)
-                    person_detections = []
-                    if len(results) > 0:
-                        boxes = results[0].boxes
-                        for box in boxes:
-                            cls = int(box.cls[0])
-                            conf = float(box.conf[0])
-                            xyxy = box.xyxy[0].cpu().numpy()
-                            x_min, y_min, x_max, y_max = xyxy
-                            w = x_max - x_min
-                            h = y_max - y_min
-                            if cls == 0:
-                                person_detections.append({
-                                    "box": (x_min, y_min, w, h),
-                                    "conf": conf
-                                })
-                            else:
-                                print(f"Ignored detection: class={model.names[cls]}, conf={conf}")
-
-                    for seat_label, seat_data in st.session_state.seats.items():
-                        seat_region = seat_data["region"]
-                        seat_occupied_now = False
-                        for det in person_detections:
-                            if is_person_in_seat(det["box"], seat_region):
-                                seat_occupied_now = True
-                                break
-
-                        if seat_occupied_now and not seat_data["occupied"]:
-                            seat_data["occupied"] = True
-                            seat_data["start_time"] = time.time()
-                        elif not seat_occupied_now and seat_data["occupied"]:
-                            elapsed = time.time() - seat_data["start_time"]
-                            seat_data["accumulated_time"] += elapsed
-                            seat_data["start_time"] = None
-                            seat_data["occupied"] = False
-
-                    frame_with_seats = draw_seats(frame, st.session_state.seats)
-                    final_frame = frame_with_seats.copy()
-                    persons_inside_seats = []
-                    for det in person_detections:
-                        for seat_data in st.session_state.seats.values():
-                            if is_person_in_seat(det["box"], seat_data["region"]):
-                                persons_inside_seats.append(det)
-                                break
-
-                    for idx, det in enumerate(persons_inside_seats, start=1):
-                        print(f"Drawing person_{idx} at {det['box']}")
-                        x_min, y_min, w_box, h_box = det["box"]
-                        conf = det["conf"]
-                        x_max = x_min + w_box
-                        y_max = y_min + h_box
-                        cv2.rectangle(final_frame, (int(x_min), int(y_min)), (int(x_max), int(y_max)), (0, 0, 255), 2)  # Red in RGB
-                        label = f"person_{idx} [{conf:.2f}]"
-                        cv2.putText(final_frame, label, (int(x_min), int(y_min) - 5),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-
-                    print("Final frame sample pixel:", final_frame[0, 0])
-                    frame_placeholder.image(final_frame, channels="RGB", caption="Monitoring Seats", use_container_width=True)
-                    time.sleep(0.05)
-
-                    if not st.session_state.run:
-                        break
-                release_camera(cap)
-            else:
-                st.session_state.run = False
 
 def render():
     monitor_attendance()
