@@ -1,0 +1,4 @@
+[submodule "AiSee-with-IoT"]
+	path = AiSee-with-IoT
+	url = https://github.com/Kimchiigu/AiSee
+	branch = IoT-Final-Version
