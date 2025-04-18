@@ -28,49 +28,53 @@ def load_css():
         
         /* Sidebar improvements */
         [data-testid="stSidebar"] {
-            color: white;
+            color: var(--sidebar-text-color);
         }
         
         /* Sidebar header */
         .sidebar .sidebar-content {
-            background: transparent;
+            background: var(--sidebar-background-color);
         }
         
-        /* Button styling */
+        /* Button styling - Fixed with proper background colors */
         .stButton>button {
-            border: 1px solid #4b6cb7;
+            border: 1px solid var(--primary-color);
             border-radius: 8px;
             padding: 0.5rem 1rem;
             transition: all 0.3s;
             width: 100%;
             margin-bottom: 0.5rem;
+            color: var(--primary-color);
+            background-color: rgba(75, 108, 183, 0.1); /* Semi-transparent version of primary color */
         }
         
         .stButton>button:hover {
-            background-color: #4b6cb7;
-            color: white;
+            background-color: var(--primary-color) !important;
+            color: white !important;
+            border-color: var(--primary-color);
         }
         
         /* Active button */
         .stButton>button:focus:not(:active) {
-            background-color: #3a56a5;
-            color: white;
+            background-color: var(--primary-color) !important;
+            color: white !important;
         }
         
-        /* Logout button */
+        /* Logout button - Made more theme-aware */
         .logout-btn>button {
-            background-color: #ff4b4b;
-            color: white;
-            border: none;
+            background-color: rgba(255, 75, 75, 0.1);
+            color: #ff4b4b;
+            border: 1px solid #ff4b4b;
         }
         
         .logout-btn>button:hover {
-            background-color: #ff3030;
+            background-color: #ff4b4b !important;
+            color: white !important;
         }
         
         /* Divider */
         .sidebar-divider {
-            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            border-top: 1px solid var(--divider-color);
             margin: 1rem 0;
         }
         
@@ -79,7 +83,7 @@ def load_css():
             font-size: 1.1rem;
             font-weight: 600;
             margin-bottom: 0.5rem;
-            color: white;
+            color: var(--sidebar-text-color);
         }
     </style>
     """, unsafe_allow_html=True)
