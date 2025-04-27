@@ -31,7 +31,7 @@ class SnapshotTransformer(VideoTransformerBase):
 
 @st.cache_resource
 def load_model():
-    model_path = "model/monitoring/yolov9m.pt"
+    model_path = "model/emotion/yolov11_finetuned.pt"
     if not os.path.exists(model_path):
         st.error(f"Model file not found at {model_path}.")
         st.stop()

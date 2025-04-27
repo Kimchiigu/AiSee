@@ -5,3 +5,5 @@ firebase-service-account.json
 model/absensi/*.json
 model/absensi/*.yml
 debug.log
+cumulus_emotion_detection.ipynb
+aisee-exam-cheating-detection.ipynb
