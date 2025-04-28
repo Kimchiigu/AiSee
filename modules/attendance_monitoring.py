@@ -12,7 +12,7 @@ import av
 import queue
 import threading
 import time
-from emotion_model import EmotionDetector
+from model.emotion.emotion_model import EmotionDetector
 
 global_seats = {}
 seats_lock = threading.Lock()
