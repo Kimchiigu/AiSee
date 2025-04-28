@@ -24,7 +24,6 @@ attendance_name = config["attendant_names"]
 attendance_subject = config["attendant_subjects"]
 attendance_time = config["attendant_times"]
 
-
 if not firebase_admin._apps:
     cred = credentials.Certificate(st.secrets["FIREBASE_SERVICE_ACCOUNT"].to_dict())
     initialize_app(cred)
@@ -68,15 +67,15 @@ def send_to_ubidots(name, subject, time):
     data = {
         attendance_name: {
             "value": 1,  # Dummy value (Ubidots requires a number)
-            "context" : {"name": name}  # Store the name here
+            "context" : {"name": name}
         },
         attendance_subject: {
-            "value": 1,  # Dummy value (Ubidots requires a number)
-            "context" : {"subject": subject}  # Store the subject here
+            "value": 1,
+            "context" : {"subject": subject}
         }, 
         attendance_time: {
-            "value": 1,  # Dummy value (Ubidots requires a number)
-            "context" : {"time": time}  # Store the time here
+            "value": 1,
+            "context" : {"time": time}
         }
     }
     response = requests.post(url, json=data, headers=headers)
@@ -174,7 +173,6 @@ def capture_face_for_verification(timeout=5):
     
     _, faces = detect_and_draw_faces(frame)
     
-    # Show Image Temporarily
     st.image(frame, channels="RGB", use_container_width=True)
     
     if len(faces) > 0:
@@ -258,7 +256,6 @@ def verify_user():
                             "isVerified": True
                         })
                         
-                        # Send data to Ubidots
                         send_to_ubidots(name, subject, timestamp)
                         
                         # Send data to ESP32

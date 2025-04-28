@@ -6,3 +6,4 @@ model/absensi/*.json
 model/absensi/*.yml
 debug.log
 uploaded_images
+cumulus_emotion_detection.ipynb

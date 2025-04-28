@@ -60,7 +60,7 @@ def send_to_ubidots(image_url):
     data = {
         REGISTRATION_IMAGE: {
             "value": 1,  # Dummy value (Ubidots requires a number)
-            "context": {"url": image_url}  # Store the image URL here
+            "context": {"url": image_url}
         }
     }
     response = requests.post(url, json=data, headers=headers)

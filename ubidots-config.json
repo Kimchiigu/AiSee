@@ -1,8 +1,8 @@
 {
-    "UBIDOTS_TOKEN": "BBUS-cstt1Eo2ShorZrikxa0zy27es1vstF",
-    "DEVICE_LABEL": "esp32",
-    "registration_image": "image",
-    "attendant_names": "attendant_names",
-    "attendant_times": "attendant_times",
-    "attendant_subjects": "attendant_subjects"
-  }
+  "UBIDOTS_TOKEN": "BBUS-cstt1Eo2ShorZrikxa0zy27es1vstF",
+  "DEVICE_LABEL": "esp32",
+  "registration_image": "image",
+  "attendant_names": "attendant_names",
+  "attendant_times": "attendant_times",
+  "attendant_subjects": "attendant_subjects"
+}

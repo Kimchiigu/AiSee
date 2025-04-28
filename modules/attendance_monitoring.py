@@ -20,15 +20,14 @@ def load_model():
 def fetch_latest_image_from_flask():
     """Fetch the latest image from the 'uploaded_images' folder."""
     try:
-        # Get the list of images in the 'uploaded_images' folder, sorted by modification time
         images = sorted(glob.glob("./uploaded_images/*.jpg"), key=os.path.getmtime, reverse=True)
 
         if not images:
             st.error("No images found in the 'uploaded_images' folder.")
             return None
 
-        latest_image_path = images[0]  # Get the most recent image
-        image = cv2.imread(latest_image_path)  # Read the image using OpenCV
+        latest_image_path = images[0]
+        image = cv2.imread(latest_image_path)
         return image
 
     except Exception as e:
@@ -128,7 +127,7 @@ def monitor_attendance():
                     st.error("Error: Could not fetch image.")
                     break
                 frame_placeholder.image(frame, channels="RGB", caption="Live Feed", use_container_width=True)
-                time.sleep(0.05)  # Jeda seperti exam_supervisor.py
+                time.sleep(0.05)
                 if not st.session_state.run:
                     break
 
