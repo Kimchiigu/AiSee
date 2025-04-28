@@ -12,6 +12,7 @@ import av
 import queue
 import threading
 import time
+from emotion_model import EmotionDetector
 
 global_seats = {}
 seats_lock = threading.Lock()
@@ -267,6 +268,7 @@ def monitor_attendance():
             
         webrtc_ctx = webrtc_streamer(
             key="seat-monitoring",
+            video_processor_factory=EmotionDetector,
             video_frame_callback=video_frame_callback,
             mode=WebRtcMode.SENDRECV,
             media_stream_constraints={"video": {"width": 640, "height": 480}, "audio": False},
