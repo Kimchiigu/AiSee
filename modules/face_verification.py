@@ -282,6 +282,7 @@ def verify_user():
                             db.collection("attendance").document(attendance_id).update({
                                 "isPass": True
                             })
+
                         # Send data to Ubidots
                         send_to_ubidots(name, subject, timestamp)
                         
