@@ -67,7 +67,6 @@ def render():
             time.sleep(0.1)
             continue
 
-
         results = model.predict(frame, conf=0.5)
         annotated_frame = results[0].plot()
         annotated_frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)

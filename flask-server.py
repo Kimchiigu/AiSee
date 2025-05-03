@@ -1,4 +1,3 @@
-# flask_server.py
 from flask import Flask, request
 from datetime import datetime
 import os

@@ -132,7 +132,7 @@ def monitor_attendance():
                     st.error("Error: Could not fetch image.")
                     break
                 frame_placeholder.image(frame, channels="RGB", caption="Live Feed", use_container_width=True)
-                time.sleep(0.05)  # Jeda seperti exam_supervisor.py
+                time.sleep(0.05)
                 if not st.session_state.run:
                     break
 
