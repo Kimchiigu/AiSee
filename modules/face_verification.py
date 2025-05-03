@@ -277,6 +277,12 @@ def verify_user():
                         db.collection("attendance").document(attendance_id).update({
                             "attendTimes": firestore.Increment(1)
                         })
+                        
+                        if db.collection("attendance").document(attendance_id).get().to_dict()["attendTimes"] >= db.collection("attendance").document(attendance_id).get().to_dict()["minimum"]:
+                            db.collection("attendance").document(attendance_id).update({
+                                "isPass": True
+                            })
+                            
                         # Send data to Ubidots
                         send_to_ubidots(name, subject, timestamp)
                         
