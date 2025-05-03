@@ -4,29 +4,22 @@ import numpy as np
 from ultralytics import YOLO
 import os
 import glob
-import threading
-import time
 
-stop_event = threading.Event()
-frame_data = {"image": None, "results": None}
-
-def fetch_and_predict_loop(model):
-    while not stop_event.is_set():
+def fetch_latest_image_from_flask():
+    try:
         images = sorted(glob.glob("./uploaded_images/*.jpg"), key=os.path.getmtime, reverse=True)
+
         if not images:
-            time.sleep(0.5)
-            continue
+            st.error("No images found in the 'uploaded_images' folder.")
+            return None
 
         latest_image_path = images[0]
-        frame = cv2.imread(latest_image_path)
-        if frame is None:
-            time.sleep(0.5)
-            continue
+        image = cv2.imread(latest_image_path) 
+        return image
 
-        results = model.predict(frame, conf=0.5)
-        frame_data["image"] = frame
-        frame_data["results"] = results
-        time.sleep(0.5)  # control frame rate
+    except Exception as e:
+        st.error(f"Error fetching image: {e}")
+        return None
 
 @st.cache_resource
 def load_model():
@@ -46,26 +39,20 @@ def render():
 
     if 'run' not in st.session_state:
         st.session_state.run = False
-        st.session_state.thread = None
 
     start_button = st.button("Start Camera")
     stop_button = st.button("Stop Camera")
 
-    if start_button and not st.session_state.run:
-        stop_event.clear()
+    if start_button:
         st.session_state.run = True
-        st.session_state.thread = threading.Thread(target=fetch_and_predict_loop, args=(model,), daemon=True)
-        st.session_state.thread.start()
-    if stop_button and st.session_state.run:
-        stop_event.set()
+    if stop_button:
         st.session_state.run = False
 
     while st.session_state.run:
-        frame = frame_data["image"]
-        results = frame_data["results"]
-        if frame is None or results is None:
-            time.sleep(0.1)
+        frame = fetch_latest_image_from_flask()
+        if frame is None:
             continue
+
 
         results = model.predict(frame, conf=0.5)
         annotated_frame = results[0].plot()
@@ -82,7 +69,5 @@ def render():
                 st.warning(f"Mobile Device Detected! Confidence: {confidence:.2f}")
             elif "normal" in class_name.lower():
                 st.success(f"Normal Behavior Detected! Confidence: {confidence:.2f}")
-                
-        time.sleep(0.1)
 
     st.write("Camera stopped.")
