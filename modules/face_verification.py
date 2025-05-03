@@ -14,7 +14,7 @@ import glob
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-ESP32_IP = "http://192.168.1.14" # Replace with your ESP32 IP address
+ESP32_IP = "http://192.168.1.8" # Replace with your ESP32 IP address
 
 with open('./ubidots-config.json', 'r') as f:
     config = json.load(f)
@@ -192,12 +192,31 @@ def get_user_id_by_name(name):
         return user.id
     return None
 
-def get_attendance_id(user_id, subject, semester="semester-1"):
+def get_semester_by_name(name):
+    """Get semester by name from the users collection."""
+    users_ref = db.collection("users").where("name", "==", name).stream()
+    for user in users_ref:
+        return user.to_dict().get("semester")
+    return None
+
+def get_attendance_id(userId, subject, semester):
     """Get attendance ID from the attendance collection."""
-    attendance_ref = db.collection("attendance").where("userId", "==", user_id).where("subject", "==", subject).where("semester", "==", semester).stream()
+    attendance_ref = db.collection("attendance").where("userId", "==", userId).where("subject", "==", subject).where("semester", "==", semester).stream()
     for attendance in attendance_ref:
         return attendance.id
-    return None
+
+    # No attendance found, create a new one
+    new_attendance = {
+        "userId": userId,
+        "subject": subject,
+        "semester": semester,
+        "attendTimes": 0,
+        "isPass":False,
+        "maximum": 12,
+        "minimum": 10
+    }
+    doc_ref = db.collection("attendance").add(new_attendance)
+    return doc_ref[1].id
 
 ### Main Function ###
 def verify_user():
@@ -238,11 +257,10 @@ def verify_user():
                         user_id = get_user_id_by_name(name)
                         if not user_id:
                             st.error("User not found in database.")
-                            
-                            response = requests.post(ESP32_IP, data={"verify": "success" if status else "fail"})
                             return
 
-                        attendance_id = get_attendance_id(user_id, subject)
+                        semester = get_semester_by_name(name)
+                        attendance_id = get_attendance_id(user_id, subject, semester)
                         if not attendance_id:
                             st.error(f"No attendance record found for {name} in subject {subject}.")
                             
@@ -258,6 +276,9 @@ def verify_user():
                             "isVerified": True
                         })
                         
+                        db.collection("attendance").document(attendance_id).update({
+                            "attendTimes": firestore.Increment(1)
+                        })
                         # Send data to Ubidots
                         send_to_ubidots(name, subject, timestamp)
                         

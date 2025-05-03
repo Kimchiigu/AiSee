@@ -1,6 +1,6 @@
 import streamlit as st
 from utils.auth import login_form
-from modules import face_registration, face_verification, attendance_monitoring, exam_supervisor
+from modules import face_registration, face_verification, attendance_monitoring, exam_supervisor, make_subjects
 
 st.set_page_config(
     page_title="AIsee - Intelligent Student Monitoring",
@@ -89,11 +89,12 @@ load_css()
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 if 'page' not in st.session_state:
-    st.session_state.page = "Dashboard"
+    st.session_state.page = "Face Registration"
 
 def render_sidebar():
     st.sidebar.markdown("# 👁️ AIsee")
     st.sidebar.markdown("**Intelligent Student Monitoring System**")
+    st.sidebar.markdown("**admin:admin1234**")
     st.sidebar.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
     
     if st.session_state.logged_in:
@@ -107,6 +108,7 @@ def render_sidebar():
             "Face Verification": "👤",
             "Attendance Monitoring": "✅",
             "Exam Supervisor": "📝",
+            "Make Subject": "📚",
         }
         
         for page_name, icon in nav_options.items():
@@ -118,7 +120,7 @@ def render_sidebar():
         st.sidebar.markdown('<div class="logout-btn">', unsafe_allow_html=True)
         if st.sidebar.button("🚪 Logout"):
             st.session_state.logged_in = False
-            st.session_state.page = "Dashboard" 
+            st.session_state.page = "Face Registration" 
             st.rerun()
         st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
@@ -135,6 +137,8 @@ def render_main():
             attendance_monitoring.render()
         elif page == "Exam Supervisor":
             exam_supervisor.render()
+        elif page == "Make Subject":
+            make_subjects.render()
 
 render_sidebar()
 render_main()

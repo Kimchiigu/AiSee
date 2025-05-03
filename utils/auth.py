@@ -13,6 +13,8 @@ def login_form():
             if password == stored_password:
                 if role in ["admin", "teacher"]:
                     st.session_state.logged_in = True
+                    st.session_state.username = username
+                    st.session_state.role = role  # ✅ Save the user's role
                     st.rerun()
                 else:
                     st.sidebar.error("You do not have permission to log in.")

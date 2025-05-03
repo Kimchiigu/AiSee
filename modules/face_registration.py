@@ -37,18 +37,21 @@ cloudinary.config(
 face_cascade = cv2.CascadeClassifier('model/absensi/haarcascade_frontalface_default.xml')
 
 ### Helper Functions ###
+@st.cache_data(ttl=1) 
+def get_latest_image_path():
+    images = glob.glob("./uploaded_images/*.jpg")
+    if not images:
+        return None
+    return max(images, key=os.path.getmtime)
+
 def fetch_latest_image_from_flask():
     try:
-        images = sorted(glob.glob("./uploaded_images/*.jpg"), key=os.path.getmtime, reverse=True)
-
-        if not images:
-            st.error("No images found in the 'uploaded_images' folder.")
+        latest_image_path = get_latest_image_path()
+        if not latest_image_path:
+            st.error("No images found.")
             return None
-
-        latest_image_path = images[0]
         image = cv2.imread(latest_image_path)
         return image
-
     except Exception as e:
         st.error(f"Error fetching image: {e}")
         return None
@@ -81,6 +84,7 @@ def simulate_live_feed(placeholder):
         return
     frame, _ = detect_and_draw_faces(frame)
     placeholder.image(frame, channels="RGB", use_container_width=True)
+    time.sleep(0.2) 
 
 def capture_faces(placeholder, num_images=50, delay=0.1):
     """Capture multiple face images with a delay, showing live feed."""
